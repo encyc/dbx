@@ -216,7 +216,7 @@ Stable direct functions rank above generated combinator variants when match qual
 
 Generated variants remain competitive once the typed prefix includes their suffix. Experimental and deprecated entries receive a modest negative boost and a visible status label, but remain discoverable.
 
-Aliases de-duplicate against canonical functions case-insensitively. When an alias is selected, its documented spelling is inserted unless the alias is explicitly marked as redirect-only.
+Aliases de-duplicate against canonical functions case-insensitively. An alias can match the typed prefix, but accepting it inserts the canonical ClickHouse function name and casing.
 
 ## Validation and Failure Handling
 
@@ -230,7 +230,7 @@ The static path has no network failures. Registry validation catches authoring p
 - invalid lifecycle status;
 - illegal combinator ordering;
 - combinator cycles;
-- missing canonical targets for redirect-only aliases.
+- aliases that do not belong to a canonical definition.
 
 Tests fail on invalid inventory data. At runtime, an isolated malformed entry is skipped rather than breaking the entire completion popup, while development builds may log a diagnostic.
 
