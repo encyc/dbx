@@ -1269,6 +1269,10 @@ export interface SqlFunctionSignatureHelp {
   name: string;
   overloads: SqlFunctionSignatureHelpOverload[];
   activeOverload: number;
+  /** Legacy single-overload fields retained for non-ClickHouse callers. */
+  signature?: string;
+  activeParameter?: number;
+  parameters?: string[];
 }
 
 export interface SqlCompletionTranslations {
@@ -1644,16 +1648,26 @@ export function getSqlFunctionSignatureHelp(sql: string, cursor: number, databas
   if (!call) return null;
 
   const observedParameter = countTopLevelCommas(call.groupText);
-  const parameterGroups =
-    databaseType === "clickhouse"
-      ? searchClickHouseFunctions(call.name, 50)
-          .find((definition) => [definition.name, ...(definition.aliases ?? [])].some((name) => name.toLowerCase() === call.name.toLowerCase()))
-          ?.signatures.map((signature) => signature.parameterGroups)
-      : (() => {
-          const lookupName = call.name.toUpperCase();
-          const parameters = (databaseType ? DATABASE_FUNCTION_SIGNATURES[databaseType]?.get(lookupName) : undefined) ?? SQL_FUNCTION_SIGNATURES.get(lookupName);
-          return parameters ? [[parameters]] : undefined;
-        })();
+  if (databaseType !== "clickhouse") {
+    const lookupName = call.name.toUpperCase();
+    const parameters = (databaseType ? DATABASE_FUNCTION_SIGNATURES[databaseType]?.get(lookupName) : undefined) ?? SQL_FUNCTION_SIGNATURES.get(lookupName);
+    if (!parameters) return null;
+    const activeParameter = Math.min(observedParameter, Math.max(0, parameters.length - 1));
+    const signature = `${lookupName}(${parameters.join(", ")})`;
+    const legacyHelp = { name: lookupName, signature, activeParameter, parameters };
+    Object.defineProperties(legacyHelp, {
+      overloads: {
+        value: [{ signature, parameterGroups: [parameters], activeGroup: 0, activeParameter }],
+        enumerable: false,
+      },
+      activeOverload: { value: 0, enumerable: false },
+    });
+    return legacyHelp as SqlFunctionSignatureHelp;
+  }
+
+  const parameterGroups = searchClickHouseFunctions(call.name, 50)
+    .find((definition) => [definition.name, ...(definition.aliases ?? [])].some((name) => name.toLowerCase() === call.name.toLowerCase()))
+    ?.signatures.map((signature) => signature.parameterGroups);
   if (!parameterGroups) return null;
 
   const overloads = parameterGroups
