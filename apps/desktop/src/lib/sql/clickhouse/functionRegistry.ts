@@ -1,4 +1,6 @@
 import type { ClickHouseFunctionDefinition, ClickHouseFunctionKind, ClickHouseFunctionRegistry } from "./functionTypes";
+import { generateAggregateCombinatorCandidates } from "./aggregateCombinators";
+import { CLICKHOUSE_AGGREGATE_FUNCTIONS } from "./aggregateFunctions";
 import { CLICKHOUSE_REGULAR_FUNCTIONS } from "./regularFunctions";
 import { CLICKHOUSE_TABLE_FUNCTIONS } from "./tableFunctions";
 
@@ -38,4 +40,11 @@ export function createClickHouseFunctionRegistry(definitions: readonly ClickHous
   };
 }
 
-export const CLICKHOUSE_FUNCTION_REGISTRY = createClickHouseFunctionRegistry([...CLICKHOUSE_REGULAR_FUNCTIONS, ...CLICKHOUSE_TABLE_FUNCTIONS]);
+export const CLICKHOUSE_FUNCTION_REGISTRY = createClickHouseFunctionRegistry([...CLICKHOUSE_REGULAR_FUNCTIONS, ...CLICKHOUSE_AGGREGATE_FUNCTIONS, ...CLICKHOUSE_TABLE_FUNCTIONS]);
+
+export function searchClickHouseFunctions(prefix: string, limit: number, kind?: ClickHouseFunctionKind): ClickHouseFunctionDefinition[] {
+  const direct = CLICKHOUSE_FUNCTION_REGISTRY.search(prefix, limit, kind);
+  if (direct.length >= limit || (kind && kind !== "aggregate")) return direct;
+  const generated = generateAggregateCombinatorCandidates(prefix, limit - direct.length);
+  return [...direct, ...generated].slice(0, limit);
+}
