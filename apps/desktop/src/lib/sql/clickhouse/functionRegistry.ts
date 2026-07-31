@@ -1,4 +1,6 @@
 import type { ClickHouseFunctionDefinition, ClickHouseFunctionKind, ClickHouseFunctionRegistry } from "./functionTypes";
+import { CLICKHOUSE_REGULAR_FUNCTIONS } from "./regularFunctions";
+import { CLICKHOUSE_TABLE_FUNCTIONS } from "./tableFunctions";
 
 function definitionKeys(definition: ClickHouseFunctionDefinition): string[] {
   return [definition.name, ...(definition.aliases ?? [])].map((name) => name.toLowerCase());
@@ -35,3 +37,5 @@ export function createClickHouseFunctionRegistry(definitions: readonly ClickHous
     all: () => ordered,
   };
 }
+
+export const CLICKHOUSE_FUNCTION_REGISTRY = createClickHouseFunctionRegistry([...CLICKHOUSE_REGULAR_FUNCTIONS, ...CLICKHOUSE_TABLE_FUNCTIONS]);
