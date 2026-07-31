@@ -2,6 +2,8 @@ import { Cassandra, MariaSQL, MSSQL, MySQL, PLSQL, PostgreSQL, SQLite, StandardS
 import type { DatabaseType, SqlSnippet } from "@/types/database";
 import { buildMongoCompletionItemsFromContext, type MongoCompletionItem } from "@/lib/mongo/mongoCompletion";
 import { CLOUDFLARE_D1_COMMON_FUNCTION_NAMES } from "@/lib/sql/cloudflareD1";
+import { searchClickHouseFunctions } from "@/lib/sql/clickhouse/functionRegistry";
+import type { ClickHouseFunctionDefinition, ClickHouseFunctionKind } from "@/lib/sql/clickhouse/functionTypes";
 import type { SqlObjectNavigationType } from "@/lib/sql/sqlNavigation";
 import { sqlSemanticDialectFor } from "@/lib/sql/semantic/dialect";
 import { findActiveSqlStatementSpan, tokenizeSqlSemantic } from "@/lib/sql/semantic/tokens";
@@ -1251,6 +1253,7 @@ export interface SqlCompletionContext {
   oracleTableFunctionContext?: boolean;
   autoAliasTableCompletions: boolean;
   tableAliasAfterCursor?: boolean;
+  openingParenAfterCursor: boolean;
   contextKind: SqlCompletionContextKind;
   dataTypeContext: boolean;
 }
@@ -1344,7 +1347,7 @@ class SqlCompletionProvider {
         this.items.push(...buildSnippetItems(context.prefix, snippets, this.input.keywordCase, this.databaseType));
       }
       if (!preferReferencedColumns || context.suggestRoutines) {
-        const functionItems = context.dataTypeContext ? [] : buildFunctionSnippetItems(context.prefix, getFunctionDescriptions(this.t), this.databaseType);
+        const functionItems = context.dataTypeContext ? [] : buildFunctionSnippetItems(context.prefix, getFunctionDescriptions(this.t), this.databaseType, context.openingParenAfterCursor);
         this.items.push(...(preferReferencedColumns ? functionItems.filter((item) => item.label.toLowerCase().startsWith(context.prefix.toLowerCase())) : functionItems));
         if (isOracleLikeDatabase(this.databaseType)) {
           this.items.push(...buildOracleSystemValueItems(context.prefix, this.input.keywordCase));
@@ -1400,6 +1403,9 @@ class SqlCompletionProvider {
     if (!context.exclusiveColumnSuggestions && context.suggestTables) {
       this.items.push(...buildForeignKeyRelatedTableItems(context, this.input.tables, this.input.foreignKeysByTable, this.dialect));
       this.items.push(...buildTableItems(context, this.input.tables, this.dialect, !!this.input.autoAliasTables && context.autoAliasTableCompletions, context.referencedTables, this.databaseType, this.input.currentSchema));
+      if (this.databaseType === "clickhouse") {
+        this.items.push(...buildClickHouseFunctionItems(context.prefix, context.openingParenAfterCursor, "table"));
+      }
       if (isOracleLikeDatabase(this.databaseType)) {
         this.items.push(...buildOracleTableFunctionItems(context.prefix));
       }
@@ -1834,6 +1840,7 @@ export function getSqlCompletionContext(sql: string, cursor: number, options: Sq
     oracleTableFunctionContext,
     autoAliasTableCompletions,
     tableAliasAfterCursor,
+    openingParenAfterCursor: /^\s*\(/.test(sql.slice(cursor)),
     contextKind,
     dataTypeContext,
   };
@@ -4101,7 +4108,46 @@ function activeFunctionSignatures(databaseType?: DatabaseType): Map<string, stri
   return signatures;
 }
 
-function buildFunctionSnippetItems(prefix: string, functionDescriptions: Map<string, string>, databaseType?: DatabaseType): SqlCompletionItem[] {
+function formatFunctionSignatureApply(definition: ClickHouseFunctionDefinition, omitOpeningParen: boolean): string {
+  if (omitOpeningParen) return definition.name;
+  const signature = definition.signatures[definition.preferredSignature ?? 0];
+  return (
+    definition.name +
+    signature.parameterGroups
+      .map(
+        (group) =>
+          `(${group
+            .filter((parameter) => !parameter.endsWith("?"))
+            .map((parameter) => `\${${parameter}}`)
+            .join(", ")})`,
+      )
+      .join("")
+  );
+}
+
+function clickHouseFunctionDetail(definition: ClickHouseFunctionDefinition): string {
+  const status = definition.status && definition.status !== "stable" ? ` · ${definition.status}` : "";
+  const overloads = definition.signatures.length > 1 ? ` · ${definition.signatures.length} overloads` : "";
+  return `ClickHouse · ${definition.category}${overloads}${status}`;
+}
+
+function buildClickHouseFunctionItems(prefix: string, omitOpeningParen: boolean, kind?: ClickHouseFunctionKind): SqlCompletionItem[] {
+  return searchClickHouseFunctions(prefix, 200, kind).map((definition) => {
+    const statusPenalty = definition.status === "deprecated" ? -600 : definition.status === "experimental" ? -300 : 0;
+    const generatedPenalty = definition.generated ? -75 : 0;
+    return {
+      label: definition.name,
+      type: "function" as const,
+      detail: clickHouseFunctionDetail(definition),
+      info: definition.description,
+      apply: formatFunctionSignatureApply(definition, omitOpeningParen),
+      boost: computeBoost(definition.name, prefix) + 300 + statusPenalty + generatedPenalty,
+    };
+  });
+}
+
+function buildFunctionSnippetItems(prefix: string, functionDescriptions: Map<string, string>, databaseType?: DatabaseType, omitOpeningParen = false): SqlCompletionItem[] {
+  if (databaseType === "clickhouse") return buildClickHouseFunctionItems(prefix, omitOpeningParen);
   const items: SqlCompletionItem[] = [];
 
   for (const [name, parameters] of activeFunctionSignatures(databaseType).entries()) {

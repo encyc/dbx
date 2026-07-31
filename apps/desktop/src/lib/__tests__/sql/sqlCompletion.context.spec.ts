@@ -15,6 +15,55 @@ describe("sqlCompletion keyword snippets", () => {
 });
 
 describe("sqlCompletion database functions", () => {
+  it("suggests ClickHouse functions with canonical casing and preferred placeholders", () => {
+    const sql = "SELECT tostart";
+    const items = buildSqlCompletionItems(sql, sql.length, {
+      databaseType: "clickhouse",
+      tables: [],
+      columnsByTable: new Map(),
+    });
+
+    expect(items.find((item) => item.label === "toStartOfDay")).toMatchObject({
+      type: "function",
+      apply: "toStartOfDay(${value})",
+    });
+  });
+
+  it("does not leak ClickHouse-only functions to MySQL", () => {
+    const sql = "SELECT tostart";
+    const items = buildSqlCompletionItems(sql, sql.length, {
+      databaseType: "mysql",
+      tables: [],
+      columnsByTable: new Map(),
+    });
+
+    expect(items.some((item) => item.label === "toStartOfDay")).toBe(false);
+  });
+
+  it("suggests only ClickHouse table functions alongside tables after FROM", () => {
+    const sql = "SELECT * FROM num";
+    const items = buildSqlCompletionItems(sql, sql.length, {
+      databaseType: "clickhouse",
+      tables: [{ name: "number_events", type: "table" }],
+      columnsByTable: new Map(),
+    });
+
+    expect(items).toEqual(expect.arrayContaining([expect.objectContaining({ label: "numbers", type: "function" }), expect.objectContaining({ label: "number_events", type: "table" })]));
+    expect(items.some((item) => item.label === "toStartOfDay")).toBe(false);
+  });
+
+  it("does not insert a duplicate opening parenthesis before an existing call", () => {
+    const sql = "SELECT toStart()";
+    const cursor = "SELECT toStart".length;
+    const items = buildSqlCompletionItems(sql, cursor, {
+      databaseType: "clickhouse",
+      tables: [],
+      columnsByTable: new Map(),
+    });
+
+    expect(items.find((item) => item.label === "toStartOfDay")?.apply).toBe("toStartOfDay");
+  });
+
   it("suggests MySQL Unix timestamp functions with function snippets", () => {
     const fromUnixSql = "SELECT from_unix";
     const fromUnixItems = buildSqlCompletionItems(fromUnixSql, fromUnixSql.length, {
