@@ -29,6 +29,24 @@ describe("sqlCompletion database functions", () => {
     });
   });
 
+  it("uses exact ClickHouse window function placeholders", () => {
+    const denseRankSql = "SELECT dense_";
+    const denseRankItems = buildSqlCompletionItems(denseRankSql, denseRankSql.length, {
+      databaseType: "clickhouse",
+      tables: [],
+      columnsByTable: new Map(),
+    });
+    expect(denseRankItems.find((item) => item.label === "dense_rank")?.apply).toBe("dense_rank()");
+
+    const ntileSql = "SELECT nti";
+    const ntileItems = buildSqlCompletionItems(ntileSql, ntileSql.length, {
+      databaseType: "clickhouse",
+      tables: [],
+      columnsByTable: new Map(),
+    });
+    expect(ntileItems.find((item) => item.label === "ntile")?.apply).toBe("ntile(${buckets})");
+  });
+
   it("does not leak ClickHouse-only functions to MySQL", () => {
     const sql = "SELECT tostart";
     const items = buildSqlCompletionItems(sql, sql.length, {

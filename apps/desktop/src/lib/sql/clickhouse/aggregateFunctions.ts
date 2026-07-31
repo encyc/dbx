@@ -1,4 +1,5 @@
 import type { ClickHouseFunctionDefinition, ClickHouseFunctionSignature } from "./functionTypes";
+import { CLICKHOUSE_WINDOW_FUNCTION_NAMES } from "./regularFunctions";
 
 /**
  * Static aggregate-function snapshot verified against the official ClickHouse
@@ -105,9 +106,7 @@ const aggregate = (name: string): ClickHouseFunctionDefinition => {
   };
 };
 
-const WINDOW_FUNCTION_NAMES = new Set(["lagInFrame", "leadInFrame", "nth_value", "ntile", "rank", "row_number"]);
-
 export const CLICKHOUSE_AGGREGATE_FUNCTIONS: ClickHouseFunctionDefinition[] = CLICKHOUSE_AGGREGATE_NAMES.split(" ")
   .filter(Boolean)
-  .filter((name) => !WINDOW_FUNCTION_NAMES.has(name))
+  .filter((name) => !CLICKHOUSE_WINDOW_FUNCTION_NAMES.has(name))
   .map(aggregate);

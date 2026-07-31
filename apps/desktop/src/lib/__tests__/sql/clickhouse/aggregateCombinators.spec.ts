@@ -21,6 +21,12 @@ describe("ClickHouse aggregate combinators", () => {
   it("bounds generated results", () => {
     expect(generateAggregateCombinatorCandidates("", 7)).toHaveLength(7);
   });
+
+  it("does not generate aggregate combinators for window functions", () => {
+    for (const name of ["rankIf", "denseRankState", "percentRankIf", "cume_distState", "ntileIf"] as const) {
+      expect(generateAggregateCombinatorCandidates(name, 20).some((item) => item.name === name)).toBe(false);
+    }
+  });
 });
 
 it("contains ordinary and parametric aggregate definitions", () => {

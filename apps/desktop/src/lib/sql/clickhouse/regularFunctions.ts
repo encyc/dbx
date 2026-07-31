@@ -33,12 +33,13 @@ const CLICKHOUSE_REGULAR_NAMES_BY_CATEGORY: Partial<Record<ClickHouseFunctionCat
   tuple:
     "flattenTuple tuple tupleConcat tupleDivide tupleDivideByNumber tupleElement tupleHammingDistance tupleIntDiv tupleIntDivByNumber tupleIntDivOrZero tupleIntDivOrZeroByNumber tupleMinus tupleModulo tupleModuloByNumber tupleMultiply tupleMultiplyByNumber tupleNames tupleNegate tuplePlus tuplePositiveModuloByNumber tupleToNameValuePairs",
   url: "basename cutFragment cutQueryString cutQueryStringAndFragment cutToFirstSignificantSubdomain cutToFirstSignificantSubdomainCustom cutToFirstSignificantSubdomainCustomRFC cutToFirstSignificantSubdomainCustomWithWWW cutToFirstSignificantSubdomainCustomWithWWWRFC cutToFirstSignificantSubdomainRFC cutToFirstSignificantSubdomainWithWWW cutToFirstSignificantSubdomainWithWWWRFC cutURLParameter cutWWW domain domainRFC domainWithoutWWW domainWithoutWWWRFC extractURLParameter extractURLParameterNames extractURLParameters firstSignificantSubdomain firstSignificantSubdomainCustom firstSignificantSubdomainCustomRFC firstSignificantSubdomainRFC FQDN fragment netloc path pathFull port portRFC protocol topLevelDomain topLevelDomainRFC URLHierarchy URLPathHierarchy",
-  window: "dense_rank first_value lagInFrame last_value leadInFrame nth_value ntile percent_rank rank row_number",
+  window: "cume_dist dense_rank first_value lag lagInFrame last_value lead leadInFrame nth_value ntile percent_rank rank row_number",
   other:
     "addressToLine addressToLineWithInlines addressToSymbol addTupleOfIntervals aiClassify aiEmbed aiExtract aiGenerate aiTranslate authenticatedUser bar bitAnd bitCount bitHammingDistance bitNot bitOr bitPositionsToArray bitRotateLeft bitRotateRight bitShiftLeft bitShiftRight bitSlice bitTest bitTestAll bitTestAny bitXor blockNumber blockSerializedSize blockSize buildId byteHammingDistance byteSize byteSwap caseWithExpression catboostEvaluate colorOKLABToSRGB colorOKLCHToSRGB colorSRGBToOKLAB colorSRGBToOKLCH connectionId conv convertCharset countDigits currentDatabase currentProfiles currentQueryID currentRoles currentSchemas currentUser defaultProfiles defaultRoles demangle dequantizeInt8ToBFloat16 detectCharset detectLanguage detectLanguageMixed detectLanguageUnknown detectTonality displayName dumpColumnStructure enabledProfiles enabledRoles errorCodeToName evalMLMethod filesystemAvailable filesystemCapacity filesystemUnreserved finalizeAggregation financialInternalRateOfReturn financialInternalRateOfReturnExtended financialNetPresentValue financialNetPresentValueExtended fuzzBits generateRandomStructure generateSerialID getClientHTTPHeader getMacro getMaxTableNameLengthForDatabase getMergeTreeSetting getOSKernelVersion getServerPort getServerSetting getSetting getSettingOrDefault getSizeOfEnumType getSubcolumn getTypeSerializationStreams globalNullIn globalNullInIgnoreSet globalVariable hasColumnInTable hasThreadFuzzer highlight highlightQuery hilbertDecode hilbertEncode HMAC hostName icebergBucket icebergTruncate identity ifNotFinite ignore indexHint indexOf indexOfAssumeSorted inIgnoreSet initializeAggregation initialQueryID initialQueryStartTime isConstant isDecimalOverflow isFinite isInfinite isMergeTreePartCoveredBy isNaN isPrime isProbablePrime isValidASCII isValidUTF8 joinGet joinGetOrNull lemmatize lgamma localtime lowCardinalityIndices lowCardinalityKeys mergeTreePartInfo midpoint minSampleSizeContinuous minSampleSizeConversion mortonDecode mortonEncode naiveBayesClassifier naturalSortKey negate neighbor nested normalizeQuery normalizeQueryKeepNames notILike notLike notNullIn notNullInIgnoreSet nullIn nullInIgnoreSet numericIndexedVectorAllValueSum numericIndexedVectorBuild numericIndexedVectorCardinality numericIndexedVectorGetValue numericIndexedVectorPointwiseAdd numericIndexedVectorPointwiseDivide numericIndexedVectorPointwiseEqual numericIndexedVectorPointwiseGreater numericIndexedVectorPointwiseGreaterEqual numericIndexedVectorPointwiseLess numericIndexedVectorPointwiseLessEqual numericIndexedVectorPointwiseMultiply numericIndexedVectorPointwiseNotEqual numericIndexedVectorPointwiseSubtract numericIndexedVectorShortDebugString numericIndexedVectorToMap obfuscateQuery obfuscateQueryWithSeed parseReadableSize parseReadableSizeOrNull parseReadableSizeOrZero partitionId quantizeBFloat16ToInt8 queryID queryString queryStringAndFragment range regexpExtract regexpPosition regexpQuoteMeta regionHierarchy regionIn regionToArea regionToCity regionToContinent regionToCountry regionToDistrict regionToName regionToPopulation regionToTopContinent removeDiacriticsUTF8 replicate revision rowNumberInAllBlocks rowNumberInBlock runningAccumulate runningConcurrency runningDifference runningDifferenceStartingWithFirstValue seriesDecomposeSTL seriesOutliersDetectTukey seriesPeriodDetectFFT serverTimezone serverUUID showCertificate sleep sleepEachRow structureToCapnProtoSchema structureToProtobufSchema subDate subtractTupleOfIntervals svg synonyms tcpPort tgamma throwIf tid tokenizeQuery toValidUTF8 transactionID transactionLatestSnapshot transactionOldestSnapshot transform tryDecrypt tryIdnaEncode tryPunycodeDecode uniqThetaIntersect uniqThetaNot uniqThetaUnion uptime UUIDNumToString UUIDStringToNum UUIDToNum UUIDv7ToDateTime validateNestedArraySizes version windowID wkb wkt zookeeperSessionUptime",
 };
 
 const CLICKHOUSE_ALIASES_BY_CANONICAL: Record<string, string[]> = {
+  dense_rank: ["denseRank"],
   alphaTokens: ["splitByAlpha"],
   arrayAUCPR: ["arrayPRAUC"],
   arrayFlatten: ["flatten"],
@@ -118,6 +119,7 @@ const CLICKHOUSE_ALIASES_BY_CANONICAL: Record<string, string[]> = {
   now: ["current_timestamp", "localtimestamp"],
   parseDateTime: ["TO_UNIXTIME"],
   parseDateTimeOrNull: ["str_to_date"],
+  percent_rank: ["percentRank"],
   positionCaseInsensitive: ["instr"],
   positiveModulo: ["pmod", "positive_modulo"],
   positiveModuloOrNull: ["pmodOrNull", "positive_modulo_or_null"],
@@ -187,17 +189,24 @@ const SIGNATURE_OVERRIDES: Record<string, ClickHouseFunctionSignature[]> = {
   arrayMap: [sig(["lambda", "array", "...arrays"])],
   cityHash64: [sig(["argument", "...arguments"])],
   concat: [sig(["value", "...values"])],
+  cume_dist: [sig([])],
+  dense_rank: [sig([])],
   dictGet: [sig(["dictionary", "attribute", "key"])],
   formatDateTime: [sig(["value", "format"]), sig(["value", "format", "time_zone"])],
   geoDistance: [sig(["longitude1", "latitude1", "longitude2", "latitude2"])],
   JSONExtract: [sig(["json", "path", "...paths", "return_type"])],
   JSONExtractString: [sig(["json", "path", "...paths"])],
+  lag: [sig(["value"]), sig(["value", "offset"]), sig(["value", "offset", "default"])],
   lagInFrame: [sig(["value"]), sig(["value", "offset"]), sig(["value", "offset", "default"])],
+  lead: [sig(["value"]), sig(["value", "offset"]), sig(["value", "offset", "default"])],
   leadInFrame: [sig(["value"]), sig(["value", "offset"]), sig(["value", "offset", "default"])],
   length: [sig(["value"])],
   lower: [sig(["string"])],
   map: [sig(["key", "value", "...pairs"])],
   now: [sig([]), sig(["time_zone"])],
+  ntile: [sig(["buckets"])],
+  percent_rank: [sig([])],
+  rank: [sig([])],
   row_number: [sig([])],
   substring: [sig(["string", "offset"]), sig(["string", "offset", "length"])],
   toDate: [sig(["value"]), sig(["value", "time_zone"])],
@@ -232,6 +241,8 @@ const ZERO_ARGUMENT_FUNCTIONS = new Set([
   "version",
   "yesterday",
 ]);
+
+export const CLICKHOUSE_WINDOW_FUNCTION_NAMES = new Set(["cume_dist", "dense_rank", "denseRank", "first_value", "lag", "lagInFrame", "last_value", "lead", "leadInFrame", "nth_value", "ntile", "percent_rank", "percentRank", "rank", "row_number"]);
 
 function definition(name: string, category: ClickHouseFunctionCategory): ClickHouseFunctionDefinition {
   const kind = category === "window" ? "window" : "regular";
@@ -272,6 +283,6 @@ export const CLICKHOUSE_FUNCTION_CATEGORY_MANIFEST = [
   { category: "string", minimumCount: 156 },
   { category: "tuple", minimumCount: 21 },
   { category: "url", minimumCount: 37 },
-  { category: "window", minimumCount: 10 },
+  { category: "window", minimumCount: 13 },
   { category: "other", minimumCount: 236 },
 ] as const;

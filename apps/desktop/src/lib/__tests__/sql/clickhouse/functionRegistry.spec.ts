@@ -50,6 +50,16 @@ describe("ClickHouse function registry", () => {
     expect(CLICKHOUSE_FUNCTION_REGISTRY.get("toString")?.signatures.length).toBeGreaterThan(0);
   });
 
+  it("models window function aliases and exact argument lists", () => {
+    for (const name of ["rank", "dense_rank", "denseRank", "percent_rank", "percentRank", "cume_dist"] as const) {
+      expect(CLICKHOUSE_FUNCTION_REGISTRY.get(name)).toMatchObject({ kind: "window", signatures: [{ parameterGroups: [[]] }] });
+    }
+    expect(CLICKHOUSE_FUNCTION_REGISTRY.get("ntile")).toMatchObject({
+      kind: "window",
+      signatures: [{ parameterGroups: [["buckets"]] }],
+    });
+  });
+
   it.each(["numbers", "file", "url", "s3", "remote", "postgresql", "mysql"] as const)("contains the %s table function", (name) => {
     expect(CLICKHOUSE_TABLE_FUNCTIONS.some((definition) => definition.name === name && definition.kind === "table")).toBe(true);
   });
