@@ -1258,11 +1258,17 @@ export interface SqlCompletionContext {
   dataTypeContext: boolean;
 }
 
+export interface SqlFunctionSignatureHelpOverload {
+  signature: string;
+  parameterGroups: string[][];
+  activeGroup: number;
+  activeParameter: number;
+}
+
 export interface SqlFunctionSignatureHelp {
   name: string;
-  signature: string;
-  activeParameter: number;
-  parameters: string[];
+  overloads: SqlFunctionSignatureHelpOverload[];
+  activeOverload: number;
 }
 
 export interface SqlCompletionTranslations {
@@ -1634,23 +1640,51 @@ export function getSqlCompletionResultValidFor(sql: string, cursor: number): Reg
 
 export function getSqlFunctionSignatureHelp(sql: string, cursor: number, databaseType?: DatabaseType): SqlFunctionSignatureHelp | null {
   const beforeCursor = sql.slice(0, cursor);
-  const openParenIndex = findActiveFunctionOpenParen(beforeCursor);
-  if (openParenIndex == null) return null;
+  const call = findActiveFunctionCall(beforeCursor);
+  if (!call) return null;
 
-  const beforeParen = beforeCursor.slice(0, openParenIndex).trimEnd();
-  const name = /([A-Za-z_][\w$]*)$/.exec(beforeParen)?.[1]?.toUpperCase();
-  if (!name) return null;
+  const observedParameter = countTopLevelCommas(call.groupText);
+  const parameterGroups =
+    databaseType === "clickhouse"
+      ? searchClickHouseFunctions(call.name, 50)
+          .find((definition) => [definition.name, ...(definition.aliases ?? [])].some((name) => name.toLowerCase() === call.name.toLowerCase()))
+          ?.signatures.map((signature) => signature.parameterGroups)
+      : (() => {
+          const lookupName = call.name.toUpperCase();
+          const parameters = (databaseType ? DATABASE_FUNCTION_SIGNATURES[databaseType]?.get(lookupName) : undefined) ?? SQL_FUNCTION_SIGNATURES.get(lookupName);
+          return parameters ? [[parameters]] : undefined;
+        })();
+  if (!parameterGroups) return null;
 
-  const parameters = (databaseType ? DATABASE_FUNCTION_SIGNATURES[databaseType]?.get(name) : undefined) ?? SQL_FUNCTION_SIGNATURES.get(name);
-  if (!parameters) return null;
+  const overloads = parameterGroups
+    .map((groups, sourceIndex) => ({ groups, sourceIndex }))
+    .filter(({ groups }) => groups[call.activeGroup] != null)
+    .sort((left, right) => {
+      const leftAccepts = functionParameterGroupAccepts(left.groups[call.activeGroup], observedParameter);
+      const rightAccepts = functionParameterGroupAccepts(right.groups[call.activeGroup], observedParameter);
+      return Number(rightAccepts) - Number(leftAccepts) || left.sourceIndex - right.sourceIndex;
+    })
+    .map(({ groups }) => {
+      const parameters = groups[call.activeGroup];
+      return {
+        signature: call.name + groups.map((group) => `(${group.join(", ")})`).join(""),
+        parameterGroups: groups,
+        activeGroup: call.activeGroup,
+        activeParameter: Math.min(observedParameter, Math.max(0, parameters.length - 1)),
+      };
+    });
+  if (overloads.length === 0) return null;
 
-  const activeParameter = countTopLevelCommas(beforeCursor.slice(openParenIndex + 1));
   return {
-    name,
-    signature: `${name}(${parameters.join(", ")})`,
-    activeParameter: Math.min(activeParameter, Math.max(0, parameters.length - 1)),
-    parameters,
+    name: call.name,
+    overloads,
+    activeOverload: 0,
   };
+}
+
+function functionParameterGroupAccepts(parameters: string[], observedParameter: number): boolean {
+  if (observedParameter < parameters.length) return true;
+  return parameters.some((parameter) => parameter.startsWith("..."));
 }
 
 function sqlCompletionStatementSpan(sql: string, cursor: number, options: SqlSemanticBuildOptions): SqlSemanticSpan {
@@ -4442,6 +4476,62 @@ function getTypePriorityBoost(type: SqlCompletionItem["type"]): number {
     case "keyword":
       return 0;
   }
+}
+
+interface ActiveFunctionCall {
+  name: string;
+  activeGroup: number;
+  groupText: string;
+}
+
+function findActiveFunctionCall(sqlBeforeCursor: string): ActiveFunctionCall | null {
+  const activeOpenParen = findActiveFunctionOpenParen(sqlBeforeCursor);
+  if (activeOpenParen == null) return null;
+
+  const beforeActiveGroup = sqlBeforeCursor.slice(0, activeOpenParen).trimEnd();
+  const ordinaryName = /([A-Za-z_][\w$]*)$/.exec(beforeActiveGroup)?.[1];
+  if (ordinaryName) {
+    return {
+      name: ordinaryName,
+      activeGroup: 0,
+      groupText: sqlBeforeCursor.slice(activeOpenParen + 1),
+    };
+  }
+
+  if (!beforeActiveGroup.endsWith(")")) return null;
+  const firstGroupOpenParen = findMatchingOpenParen(beforeActiveGroup, beforeActiveGroup.length - 1);
+  if (firstGroupOpenParen == null) return null;
+  const parametricName = /([A-Za-z_][\w$]*)$/.exec(beforeActiveGroup.slice(0, firstGroupOpenParen).trimEnd())?.[1];
+  if (!parametricName) return null;
+  return {
+    name: parametricName,
+    activeGroup: 1,
+    groupText: sqlBeforeCursor.slice(activeOpenParen + 1),
+  };
+}
+
+function findMatchingOpenParen(text: string, closeParenIndex: number): number | null {
+  let depth = 0;
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+  for (let index = closeParenIndex; index >= 0; index -= 1) {
+    const character = text[index];
+    if (character === "'" && !inDoubleQuote) {
+      inSingleQuote = !inSingleQuote;
+      continue;
+    }
+    if (character === '"' && !inSingleQuote) {
+      inDoubleQuote = !inDoubleQuote;
+      continue;
+    }
+    if (inSingleQuote || inDoubleQuote) continue;
+    if (character === ")") depth += 1;
+    else if (character === "(") {
+      depth -= 1;
+      if (depth === 0) return index;
+    }
+  }
+  return null;
 }
 
 function findActiveFunctionOpenParen(sqlBeforeCursor: string): number | null {
