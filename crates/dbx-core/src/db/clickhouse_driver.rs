@@ -1,6 +1,7 @@
 use futures::StreamExt;
 use reqwest::{Certificate, Client as HttpClient};
 use serde::Deserialize;
+use std::borrow::Cow;
 use std::fs;
 use std::time::{Duration, Instant};
 use tokio_util::sync::CancellationToken;
@@ -119,11 +120,6 @@ struct ChColumn {
     _type: String,
 }
 
-enum QueryResultLimit {
-    Unlimited,
-    Limited(usize),
-}
-
 enum QueryResultFormat {
     JsonCompact,
     JsonCompactEachRowWithNamesAndTypes,
@@ -146,28 +142,19 @@ pub enum ClickHouseQueryStreamItem {
     Row(Vec<serde_json::Value>),
 }
 
-fn build_query_url(
-    base_url: &str,
-    database: Option<&str>,
-    limit: QueryResultLimit,
-    extra_params: Option<&str>,
-) -> String {
-    build_query_url_with_format(base_url, database, limit, QueryResultFormat::JsonCompact, extra_params)
+fn build_query_url(base_url: &str, database: Option<&str>, extra_params: Option<&str>) -> String {
+    build_query_url_with_format(base_url, database, QueryResultFormat::JsonCompact, extra_params)
 }
 
 fn build_query_url_with_format(
     base_url: &str,
     database: Option<&str>,
-    limit: QueryResultLimit,
     format: QueryResultFormat,
     extra_params: Option<&str>,
 ) -> String {
     let mut url = format!("{}/?default_format={}", base_url, format.as_str());
     if let Some(db) = database {
         url.push_str(&format!("&database={db}"));
-    }
-    if let QueryResultLimit::Limited(max_rows) = limit {
-        url.push_str(&format!("&max_result_rows={max_rows}&result_overflow_mode=break"));
     }
     // 用户自定义 URL 参数放在最后追加，允许其覆盖前面的默认设置（ClickHouse 取同名参数的最后一个值）
     if let Some(params) = normalize_extra_params(extra_params) {
@@ -274,16 +261,7 @@ fn build_request(client: &ChClient, req: reqwest::RequestBuilder) -> reqwest::Re
 }
 
 async fn ch_query(client: &ChClient, sql: &str, database: Option<&str>) -> Result<ChJsonResult, String> {
-    ch_query_with_limit(client, sql, database, QueryResultLimit::Unlimited).await
-}
-
-async fn ch_query_with_limit(
-    client: &ChClient,
-    sql: &str,
-    database: Option<&str>,
-    limit: QueryResultLimit,
-) -> Result<ChJsonResult, String> {
-    let url = build_query_url(&client.base_url, database, limit, client.extra_params.as_deref());
+    let url = build_query_url(&client.base_url, database, client.extra_params.as_deref());
     log::info!("[clickhouse] query url={url} user={:?} has_pass={}", client.username, client.password.is_some());
     let req = build_request(client, client.http.post(&url).body(sql.to_string()));
     let resp = req.send().await.map_err(|e| format!("ClickHouse request failed: {e}"))?;
@@ -305,11 +283,9 @@ pub async fn stream_query_with_max_rows(
     mut on_item: impl FnMut(ClickHouseQueryStreamItem) -> Result<(), String>,
 ) -> Result<(), String> {
     let max_rows = max_rows.map(|max_rows| max_rows.max(1));
-    let limit = max_rows.map(QueryResultLimit::Limited).unwrap_or(QueryResultLimit::Unlimited);
     let url = build_query_url_with_format(
         &client.base_url,
         Some(database),
-        limit,
         QueryResultFormat::JsonCompactEachRowWithNamesAndTypes,
         client.extra_params.as_deref(),
     );
@@ -637,15 +613,22 @@ pub async fn execute_query_with_max_rows(
     let row_limit = query_result_row_limit(max_rows);
 
     if starts_with_executable_sql_keyword(sql, &["SELECT", "SHOW", "DESCRIBE", "EXPLAIN", "WITH"]) {
-        let result = ch_query_with_limit(client, sql, Some(database), QueryResultLimit::Limited(row_limit + 1)).await?;
+        // 只读账号无法修改 `max_result_rows` / `result_overflow_mode` 等 setting
+        // （会报 READONLY: Cannot modify ... in readonly mode），因此不再通过 URL query
+        // 参数施加服务端行数限制。
+        // 对于支持 `LIMIT` 子句的语句（SELECT / WITH），改写 SQL 注入 `LIMIT` 限制返回行数，
+        // 多取一行作为「是否还有更多数据」的探针，再由 `limited_query_result` 截断；
+        // SHOW/DESCRIBE/EXPLAIN 等元数据查询结果集很小，不追加 LIMIT，直接依赖客户端截断。
+        let can_append_limit = starts_with_executable_sql_keyword(sql, &["SELECT", "WITH"]);
+        let limited_sql = if can_append_limit {
+           Cow::Owned(format!("{sql} LIMIT {}", row_limit + 1))
+        } else {
+           Cow::Borrowed(sql)
+        };
+        let result = ch_query(client, &limited_sql, Some(database)).await?;
         Ok(limited_query_result(result, start.elapsed().as_millis(), Some(row_limit)))
     } else {
-        let url = build_query_url(
-            &client.base_url,
-            Some(database),
-            QueryResultLimit::Unlimited,
-            client.extra_params.as_deref(),
-        );
+        let url = build_query_url(&client.base_url, Some(database), client.extra_params.as_deref());
         let req = build_request(client, client.http.post(&url).body(sql.to_string()));
         let resp = req.send().await.map_err(|e| format!("ClickHouse request failed: {e}"))?;
         if !resp.status().is_success() {
@@ -672,46 +655,30 @@ mod tests {
     use super::*;
 
     #[test]
-    fn query_url_for_result_sets_adds_row_limit_break_settings() {
-        let url = build_query_url(
-            "http://localhost:8123",
-            Some("analytics"),
-            QueryResultLimit::Limited(crate::query::MAX_ROWS + 1),
-            None,
-        );
-
-        assert_eq!(
-            url,
-            "http://localhost:8123/?default_format=JSONCompact&database=analytics&max_result_rows=10001&result_overflow_mode=break"
-        );
+    fn query_url_does_not_send_server_side_row_limit_settings() {
+        // 只读账号无法修改 max_result_rows / result_overflow_mode（见 #5178），
+        // 因此 URL 不应再包含这些 setting 参数；行数限制改由 SQL LIMIT / 客户端截断完成。
+        let url = build_query_url("http://localhost:8123", Some("analytics"), None);
+        assert_eq!(url, "http://localhost:8123/?default_format=JSONCompact&database=analytics");
+        assert!(!url.contains("max_result_rows"));
+        assert!(!url.contains("result_overflow_mode"));
     }
 
     #[test]
     fn query_url_appends_custom_url_params() {
         // 用户在「URL 参数」填 dialect_type=ANSI，应追加到 query string 末尾
-        let url = build_query_url(
-            "http://localhost:8123",
-            Some("analytics"),
-            QueryResultLimit::Unlimited,
-            Some("dialect_type=ANSI"),
-        );
-
+        let url = build_query_url("http://localhost:8123", Some("analytics"), Some("dialect_type=ANSI"));
         assert_eq!(url, "http://localhost:8123/?default_format=JSONCompact&database=analytics&dialect_type=ANSI");
     }
 
     #[test]
     fn query_url_normalizes_leading_symbols_and_ignores_blank_params() {
         // 允许用户带上开头的 ? 或 &，也允许多个参数
-        let url = build_query_url(
-            "http://localhost:8123",
-            None,
-            QueryResultLimit::Unlimited,
-            Some("?dialect_type=ANSI&max_threads=8"),
-        );
+        let url = build_query_url("http://localhost:8123", None, Some("?dialect_type=ANSI&max_threads=8"));
         assert_eq!(url, "http://localhost:8123/?default_format=JSONCompact&dialect_type=ANSI&max_threads=8");
 
         // 空白参数不产生多余的 &
-        let url = build_query_url("http://localhost:8123", None, QueryResultLimit::Unlimited, Some("   "));
+        let url = build_query_url("http://localhost:8123", None, Some("   "));
         assert_eq!(url, "http://localhost:8123/?default_format=JSONCompact");
     }
 
@@ -720,14 +687,13 @@ mod tests {
         let url = build_query_url_with_format(
             "http://localhost:8123",
             Some("analytics"),
-            QueryResultLimit::Limited(500),
             QueryResultFormat::JsonCompactEachRowWithNamesAndTypes,
             None,
         );
 
         assert_eq!(
             url,
-            "http://localhost:8123/?default_format=JSONCompactEachRowWithNamesAndTypes&database=analytics&max_result_rows=500&result_overflow_mode=break"
+            "http://localhost:8123/?default_format=JSONCompactEachRowWithNamesAndTypes&database=analytics"
         );
     }
 
