@@ -2300,6 +2300,7 @@ export const useQueryStore = defineStore("query", () => {
 
   const hasDirtyTabs = computed(() => tabs.value.some((tab) => isTabDirty(tab)));
   const shouldConfirmUnsavedSqlClose = computed(() => useSettingsStore().editorSettings.confirmUnsavedSqlClose);
+  const keepUnsavedTabsDraftsOnAppClose = computed(() => useSettingsStore().editorSettings.appCloseUnsavedTabsMode === "keep-drafts");
 
   const closeConfirmDirtyTabIds = computed(() => {
     if (isConfirmingAppClose.value) return tabs.value.filter((tab) => isTabDirty(tab)).map((tab) => tab.id);
@@ -2670,6 +2671,9 @@ export const useQueryStore = defineStore("query", () => {
   }
 
   function requestAppCloseConfirmation() {
+    // Hot-exit style: quit without prompting and let the dirty tabs persist as
+    // drafts so they come back on the next launch.
+    if (keepUnsavedTabsDraftsOnAppClose.value) return false;
     const dirtyTab = tabs.value.find((tab) => shouldConfirmTabClose(tab));
     if (!dirtyTab) return false;
     isConfirmingAppClose.value = true;
