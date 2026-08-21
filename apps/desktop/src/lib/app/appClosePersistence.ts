@@ -1,5 +1,6 @@
 interface FinishAppCloseWithRequiredPersistOptions {
   persist: () => Promise<void>;
+  beforeClose?: () => Promise<void>;
   close: () => Promise<void>;
   onPersistError: (error: unknown) => void;
 }
@@ -12,6 +13,7 @@ export async function finishAppCloseWithRequiredPersist(options: FinishAppCloseW
     return false;
   }
 
+  await options.beforeClose?.();
   await options.close();
   return true;
 }

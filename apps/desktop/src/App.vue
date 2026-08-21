@@ -1070,10 +1070,11 @@ async function finishPendingAppClose(action: AppCloseAction) {
   }
   pendingAppCloseAction.value = null;
   pendingSaveShouldCloseTab.value = true;
-  if (action === "quit") await disposeAllSqlServerActivityTraces().catch(() => undefined);
-  if (settingsStore.editorSettings.appCloseUnsavedTabsMode === "keep-drafts") {
+  const disposeRuntimeBeforeClose = () => (action === "quit" ? disposeAllSqlServerActivityTraces().catch(() => undefined) : Promise.resolve());
+  if (queryStore.requiresAppCloseDraftPersist) {
     await finishAppCloseWithRequiredPersist({
       persist: () => queryStore.flushPendingPersist(),
+      beforeClose: disposeRuntimeBeforeClose,
       close: () => performCloseAction(action),
       onPersistError: (error) =>
         toast(
@@ -1085,6 +1086,7 @@ async function finishPendingAppClose(action: AppCloseAction) {
     });
     return;
   }
+  await disposeRuntimeBeforeClose();
   await queryStore.flushPendingPersist().catch(() => undefined);
   await performCloseAction(action);
 }

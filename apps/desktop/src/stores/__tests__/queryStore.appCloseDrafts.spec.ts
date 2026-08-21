@@ -62,6 +62,29 @@ describe("queryStore app close unsaved drafts", () => {
     expect(queryStore.showCloseConfirm).toBe(false);
     expect(queryStore.tabs[0].sql).toBe("select 1;");
     expect(queryStore.isTabDirty(queryStore.tabs[0])).toBe(true);
+    expect(queryStore.requiresAppCloseDraftPersist).toBe(true);
+  });
+
+  it("does not require draft persistence when unsaved SQL confirmation is disabled", async () => {
+    const { useSettingsStore } = await import("@/stores/settingsStore");
+    useSettingsStore().updateEditorSettings({
+      confirmUnsavedSqlClose: false,
+      appCloseUnsavedTabsMode: "keep-drafts",
+    });
+    const { queryStore } = await createStoreWithDirtyQueryTab();
+
+    expect(queryStore.requestAppCloseConfirmation()).toBe(false);
+    expect(queryStore.requiresAppCloseDraftPersist).toBe(false);
+  });
+
+  it("does not require draft persistence without dirty SQL", async () => {
+    const { useSettingsStore } = await import("@/stores/settingsStore");
+    useSettingsStore().updateEditorSettings({ appCloseUnsavedTabsMode: "keep-drafts" });
+    const { useQueryStore } = await import("@/stores/queryStore");
+    const queryStore = useQueryStore();
+    queryStore.createTab("conn-1", "db");
+
+    expect(queryStore.requiresAppCloseDraftPersist).toBe(false);
   });
 
   it("still confirms individual dirty tab closes in keep-drafts mode", async () => {
@@ -110,19 +133,42 @@ describe("queryStore app close unsaved drafts", () => {
     const { useSettingsStore } = await import("@/stores/settingsStore");
     useSettingsStore().updateEditorSettings({ appCloseUnsavedTabsMode: "keep-drafts" });
     const { queryStore } = await createStoreWithDirtyQueryTab();
+    const beforeClose = vi.fn().mockResolvedValue(undefined);
     const close = vi.fn().mockResolvedValue(undefined);
     const onPersistError = vi.fn();
     mocks.saveOpenTabsState.mockRejectedValueOnce(new Error("disk full"));
 
     const closed = await finishAppCloseWithRequiredPersist({
       persist: () => queryStore.flushPendingPersist(),
+      beforeClose,
       close,
       onPersistError,
     });
 
     expect(closed).toBe(false);
     expect(mocks.saveOpenTabsState).toHaveBeenCalledOnce();
+    expect(beforeClose).not.toHaveBeenCalled();
     expect(close).not.toHaveBeenCalled();
     expect(onPersistError).toHaveBeenCalledWith(expect.objectContaining({ message: "disk full" }));
+  });
+
+  it("disposes runtime only after draft state is persisted", async () => {
+    const calls: string[] = [];
+
+    const closed = await finishAppCloseWithRequiredPersist({
+      persist: async () => {
+        calls.push("persist");
+      },
+      beforeClose: async () => {
+        calls.push("dispose");
+      },
+      close: async () => {
+        calls.push("close");
+      },
+      onPersistError: vi.fn(),
+    });
+
+    expect(closed).toBe(true);
+    expect(calls).toEqual(["persist", "dispose", "close"]);
   });
 });
