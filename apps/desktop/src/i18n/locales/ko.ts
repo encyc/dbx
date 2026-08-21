@@ -5728,6 +5728,7 @@ export default withEnglishFallback({
     appCloseUnsavedTabsModePrompt: "저장 여부 묻기",
     appCloseUnsavedTabsModeKeepDrafts: "묻지 않고 종료 후 초안 유지",
     appCloseUnsavedTabsModeHint: '초안은 저장되지 않은 탭으로 유지되며 다음에 DBX를 시작할 때 복원됩니다. "실행 시 탭 복원"이 "탭 유지 안 함"으로 설정되어 있지 않아야 합니다.',
+    appCloseDraftPersistFailed: "열린 탭의 초안을 저장하지 못해 DBX 종료를 취소했습니다. 디스크 공간과 파일 권한을 확인한 후 다시 종료하세요. 세부 정보: {message}",
     savedSqlOpenTarget: "저장된 SQL의 기본 실행 대상",
     savedSqlOpenTargetSaved: "저장된 대상",
     savedSqlOpenTargetSavedDescription: "SQL 파일에 저장된 연결, 데이터베이스 및 스키마를 사용합니다.",

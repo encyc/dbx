@@ -6309,6 +6309,7 @@ export default {
     appCloseUnsavedTabsModePrompt: "Ask whether to save",
     appCloseUnsavedTabsModeKeepDrafts: "Quit and keep drafts",
     appCloseUnsavedTabsModeHint: 'Drafts are kept as unsaved tabs and restored the next time you start DBX. This requires "Restore tabs on launch" to not be set to "Do not keep tabs".',
+    appCloseDraftPersistFailed: "DBX could not save the open tab drafts, so quitting was cancelled. Check disk space and file permissions, then try again. Details: {message}",
     savedSqlOpenTarget: "Default target for saved SQL",
     savedSqlOpenTargetSaved: "Saved target",
     savedSqlOpenTargetSavedDescription: "Use the connection, database, and schema stored with the SQL file.",

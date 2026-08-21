@@ -5319,6 +5319,7 @@ export default withEnglishFallback({
     appCloseUnsavedTabsModePrompt: "結束前詢問是否儲存",
     appCloseUnsavedTabsModeKeepDrafts: "直接結束並保留草稿",
     appCloseUnsavedTabsModeHint: "草稿會以未儲存分頁的形式保留，下次啟動 DBX 時還原；需要「啟動時還原分頁」不是「不保留分頁」。",
+    appCloseDraftPersistFailed: "DBX 無法儲存開啟的分頁草稿，因此已取消退出。請檢查磁碟空間和檔案權限後重試。詳細資料：{message}",
     savedSqlOpenTarget: "開啟已儲存 SQL 時的預設目標",
     savedSqlOpenTargetSaved: "儲存時的目標",
     savedSqlOpenTargetSavedDescription: "使用 SQL 檔案儲存時記錄的連線、資料庫和 Schema。",

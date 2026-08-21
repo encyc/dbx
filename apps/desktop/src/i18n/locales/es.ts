@@ -5998,6 +5998,7 @@ export default withEnglishFallback({
     appCloseUnsavedTabsModePrompt: "Preguntar si guardar",
     appCloseUnsavedTabsModeKeepDrafts: "Salir y conservar borradores",
     appCloseUnsavedTabsModeHint: 'Los borradores se conservan como pestañas sin guardar y se restauran la próxima vez que inicies DBX. Requiere que "Restaurar pestañas al iniciar" no esté en "No conservar pestañas".',
+    appCloseDraftPersistFailed: "DBX no pudo guardar los borradores de las pestañas abiertas, por lo que se canceló la salida. Comprueba el espacio en disco y los permisos de los archivos, y vuelve a intentarlo. Detalles: {message}",
     savedSqlOpenTarget: "Destino predeterminado del SQL guardado",
     savedSqlOpenTargetSaved: "Destino guardado",
     savedSqlOpenTargetSavedDescription: "Usar la conexión, la base de datos y el esquema guardados con el archivo SQL.",

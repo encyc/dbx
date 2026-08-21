@@ -5998,6 +5998,7 @@ export default withEnglishFallback({
     appCloseUnsavedTabsModePrompt: "Chiedi se salvare",
     appCloseUnsavedTabsModeKeepDrafts: "Esci e conserva le bozze",
     appCloseUnsavedTabsModeHint: 'Le bozze vengono conservate come schede non salvate e ripristinate al prossimo avvio di DBX. Richiede che "Ripristina schede all\'avvio" non sia impostato su "Non mantenere schede".',
+    appCloseDraftPersistFailed: "DBX non ha potuto salvare le bozze delle schede aperte, quindi l'uscita è stata annullata. Controlla lo spazio su disco e i permessi dei file, quindi riprova. Dettagli: {message}",
     savedSqlOpenTarget: "Destinazione predefinita per SQL salvato",
     savedSqlOpenTargetSaved: "Destinazione salvata",
     savedSqlOpenTargetSavedDescription: "Usa la connessione, il database e lo schema salvati con il file SQL.",

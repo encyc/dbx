@@ -6000,6 +6000,7 @@ export default withEnglishFallback({
     appCloseUnsavedTabsModePrompt: "Perguntar se deseja salvar",
     appCloseUnsavedTabsModeKeepDrafts: "Sair e manter rascunhos",
     appCloseUnsavedTabsModeHint: 'Os rascunhos são mantidos como abas não salvas e restaurados na próxima vez que você iniciar o DBX. Requer que "Restaurar abas ao iniciar" não esteja definido como "Não manter abas".',
+    appCloseDraftPersistFailed: "O DBX não conseguiu salvar os rascunhos das abas abertas, então a saída foi cancelada. Verifique o espaço em disco e as permissões dos arquivos e tente novamente. Detalhes: {message}",
     savedSqlOpenTarget: "Destino padrão do SQL salvo",
     savedSqlOpenTargetSaved: "Destino salvo",
     savedSqlOpenTargetSavedDescription: "Usar a conexão, o banco de dados e o esquema salvos com o arquivo SQL.",

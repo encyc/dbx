@@ -6020,6 +6020,7 @@ export default withEnglishFallback({
     appCloseUnsavedTabsModePrompt: "保存するかどうか確認する",
     appCloseUnsavedTabsModeKeepDrafts: "確認せず終了して下書きを保持",
     appCloseUnsavedTabsModeHint: "下書きは未保存のタブとして保持され、次回DBXを起動したときに復元されます。「起動時にタブを復元」が「タブを保持しない」になっていない必要があります。",
+    appCloseDraftPersistFailed: "開いているタブの下書きを保存できなかったため、DBX の終了を中止しました。ディスク容量とファイル権限を確認してから、もう一度終了してください。詳細: {message}",
     savedSqlOpenTarget: "保存済みSQLのデフォルト実行先",
     savedSqlOpenTargetSaved: "保存時の実行先",
     savedSqlOpenTargetSavedDescription: "SQLファイルに保存された接続、データベース、スキーマを使用します。",

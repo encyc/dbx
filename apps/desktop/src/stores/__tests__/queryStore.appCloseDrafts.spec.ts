@@ -1,10 +1,22 @@
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { finishAppCloseWithRequiredPersist } from "@/lib/app/appClosePersistence";
+
+const mocks = vi.hoisted(() => ({
+  saveOpenTabsState: vi.fn(),
+}));
+
+vi.mock("@/lib/backend/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/backend/api")>()),
+  saveOpenTabsState: mocks.saveOpenTabsState,
+}));
 
 describe("queryStore app close unsaved drafts", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.unstubAllGlobals();
+    mocks.saveOpenTabsState.mockReset();
+    mocks.saveOpenTabsState.mockResolvedValue(undefined);
     vi.stubGlobal("localStorage", {
       getItem: vi.fn(() => null),
       setItem: vi.fn(),
@@ -19,6 +31,13 @@ describe("queryStore app close unsaved drafts", () => {
     const tabId = queryStore.createTab("conn-1", "db");
     queryStore.updateSql(tabId, "select 1;");
     return { queryStore, tabId };
+  }
+
+  async function createDirtyStructureTab(queryStore: Awaited<ReturnType<typeof createStoreWithDirtyQueryTab>>["queryStore"]) {
+    const tabId = queryStore.openTableStructure("conn-1", "db", undefined, "users");
+    const tab = queryStore.tabs.find((item) => item.id === tabId)!;
+    tab.structureDraft = { dirty: true } as typeof tab.structureDraft;
+    return tabId;
   }
 
   it("prompts for unsaved SQL when quitting by default", async () => {
@@ -56,5 +75,54 @@ describe("queryStore app close unsaved drafts", () => {
     expect(queryStore.showCloseConfirm).toBe(true);
     expect(queryStore.closeConfirmContext).toBe("tab");
     expect(queryStore.tabs[0].sql).toBe("select 1;");
+  });
+
+  it("still protects a dirty structure tab during app close in keep-drafts mode", async () => {
+    const { useSettingsStore } = await import("@/stores/settingsStore");
+    useSettingsStore().updateEditorSettings({ appCloseUnsavedTabsMode: "keep-drafts" });
+    const { useQueryStore } = await import("@/stores/queryStore");
+    const queryStore = useQueryStore();
+    const structureTabId = await createDirtyStructureTab(queryStore);
+
+    expect(queryStore.requestAppCloseConfirmation()).toBe(true);
+    expect(queryStore.closeConfirmContext).toBe("app");
+    expect(queryStore.closeConfirmDirtyTabIds).toEqual([structureTabId]);
+  });
+
+  it("keeps dirty SQL drafts while protecting structure edits during app close", async () => {
+    const { useSettingsStore } = await import("@/stores/settingsStore");
+    useSettingsStore().updateEditorSettings({ appCloseUnsavedTabsMode: "keep-drafts" });
+    const { queryStore, tabId: queryTabId } = await createStoreWithDirtyQueryTab();
+    const structureTabId = await createDirtyStructureTab(queryStore);
+
+    expect(queryStore.requestAppCloseConfirmation()).toBe(true);
+    expect(queryStore.closeConfirmDirtyTabIds).toEqual([structureTabId]);
+
+    queryStore.forceCloseAllPendingTabs();
+
+    const queryTab = queryStore.tabs.find((tab) => tab.id === queryTabId)!;
+    expect(queryTab.sql).toBe("select 1;");
+    expect(queryStore.isTabDirty(queryTab)).toBe(true);
+    expect(queryStore.requestAppCloseConfirmation()).toBe(false);
+  });
+
+  it("blocks app close when saving keep-drafts state fails", async () => {
+    const { useSettingsStore } = await import("@/stores/settingsStore");
+    useSettingsStore().updateEditorSettings({ appCloseUnsavedTabsMode: "keep-drafts" });
+    const { queryStore } = await createStoreWithDirtyQueryTab();
+    const close = vi.fn().mockResolvedValue(undefined);
+    const onPersistError = vi.fn();
+    mocks.saveOpenTabsState.mockRejectedValueOnce(new Error("disk full"));
+
+    const closed = await finishAppCloseWithRequiredPersist({
+      persist: () => queryStore.flushPendingPersist(),
+      close,
+      onPersistError,
+    });
+
+    expect(closed).toBe(false);
+    expect(mocks.saveOpenTabsState).toHaveBeenCalledOnce();
+    expect(close).not.toHaveBeenCalled();
+    expect(onPersistError).toHaveBeenCalledWith(expect.objectContaining({ message: "disk full" }));
   });
 });

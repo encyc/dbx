@@ -6294,6 +6294,7 @@ export default withEnglishFallback({
     appCloseUnsavedTabsModePrompt: "退出前询问是否保存",
     appCloseUnsavedTabsModeKeepDrafts: "直接退出并保留草稿",
     appCloseUnsavedTabsModeHint: "草稿会以未保存标签页的形式保留，下次启动 DBX 时恢复；需要“启动时恢复标签页”不是“不保留标签”。",
+    appCloseDraftPersistFailed: "DBX 无法保存打开的标签页草稿，因此已取消退出。请检查磁盘空间和文件权限后重试。详情：{message}",
     savedSqlOpenTarget: "打开已保存 SQL 时的默认目标",
     savedSqlOpenTargetSaved: "保存时的目标",
     savedSqlOpenTargetSavedDescription: "使用 SQL 文件保存时记录的连接、数据库和 Schema。",
