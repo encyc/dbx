@@ -1344,6 +1344,12 @@ export default withEnglishFallback({
   },
   tabs: {
     sql: "SQL",
+    openInSplitView: "在分屏中檢視",
+    splitViewViewerBadge: "檢視",
+    splitViewPromoteToMain: "設為主窗格",
+    splitViewClose: "關閉分屏",
+    splitViewTabIndicator: "已在分屏中顯示",
+    splitViewResizeHandle: "調整分屏大小",
     table: "資料表",
     tableData: "資料表",
     redis: "Redis",

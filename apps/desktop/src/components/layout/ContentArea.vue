@@ -207,6 +207,8 @@ const props = defineProps<{
   selectedSql: string;
   cursorPos: number;
   blockDangerousRedisCommands: boolean;
+  /** Read-only reference-pane mode: the SQL editor becomes non-editable and editor action shortcuts are suppressed. */
+  viewOnly?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -1190,7 +1192,8 @@ defineExpose({
             <QueryEditor
               ref="queryEditorRef"
               class="relative z-0 flex-1"
-              auto-focus
+              :auto-focus="!viewOnly"
+              :view-only="viewOnly"
               :model-value="activeTab.sql"
               :connection-id="activeTab.connectionId"
               :catalog="activeTab.catalog"

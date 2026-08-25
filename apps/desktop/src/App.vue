@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick, defineAsyncComponent } from "vue";
 import { useI18n } from "vue-i18n";
-import { ChevronsRight, FileText } from "@lucide/vue";
+import { ChevronsRight, FileText, PanelLeft, X } from "@lucide/vue";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import AppToolbar from "@/components/layout/AppToolbar.vue";
 import AppTabBar from "@/components/layout/AppTabBar.vue";
@@ -13,6 +13,7 @@ import WelcomeScreen from "@/components/layout/WelcomeScreen.vue";
 import type { ConfigTab } from "@/components/connection/ConnectionDialog.vue";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useQueryStore } from "@/stores/queryStore";
+import { usePaneResize } from "@/composables/usePaneResize";
 import { useSqlExecutionDangerStore } from "@/stores/sqlExecutionDangerStore";
 import { useProductionSafetyStore } from "@/stores/productionSafetyStore";
 import { enforceRightSidebarPanelExclusivity, RIGHT_SIDEBAR_PANEL_IDS, transitionRightSidebarPanels, useSettingsStore, type RightSidebarPanelId, type RightSidebarPanelState } from "@/stores/settingsStore";
@@ -325,6 +326,37 @@ const activeConnection = computed(() => {
   const tab = activeTab.value;
   return tab ? connectionStore.getConfig(tab.connectionId) : undefined;
 });
+
+const splitPaneTab = computed(() => (queryStore.splitPaneTabId ? queryStore.tabs.find((t) => t.id === queryStore.splitPaneTabId) : undefined));
+// The reference pane is a viewing surface: hand it a read-only connection view so
+// consoles and grids that honour connection read_only stay non-editable there.
+const splitPaneConnection = computed(() => {
+  const tab = splitPaneTab.value;
+  if (!tab) return undefined;
+  const connection = connectionStore.getConfig(tab.connectionId);
+  return connection ? { ...connection, read_only: true } : undefined;
+});
+const splitPaneSelectedSql = ref("");
+const splitPaneCursorPos = ref(0);
+const splitPaneOutputView = ref<"result" | "summary" | "explain" | "chart" | "messages">("result");
+const splitPaneRowEl = ref<HTMLElement | null>(null);
+const { widthPercent: splitPaneWidthPercent, isResizing: isSplitPaneResizing, beginResize: beginSplitPaneResize } = usePaneResize("dbx-split-pane-width");
+
+watch(
+  () => queryStore.splitPaneTabId,
+  () => {
+    splitPaneSelectedSql.value = "";
+    splitPaneCursorPos.value = 0;
+    splitPaneOutputView.value = "result";
+  },
+);
+
+function promoteSplitPaneTabToMain() {
+  const tabId = queryStore.splitPaneTabId;
+  if (!tabId) return;
+  queryStore.closeSplitPane();
+  queryStore.switchTab(tabId);
+}
 
 function updateAgentDriverUpdateCount(count: number) {
   if (!settingsStore.editorSettings.updateNotificationsEnabled) {
@@ -2916,6 +2948,7 @@ onUnmounted(() => {
                 @activate-settings-page="activateSettingsPage"
                 @locate-tab="locateTabInSidebar"
                 @activate-tab="activateQuerySurface"
+                @open-in-split-view="(tabId: string) => queryStore.openTabInSplitPane(tabId)"
                 @close-driver-store="closeDriverStorePage"
                 @close-settings-page="closeSettingsPage"
                 @save-tab="handleSaveTab"
@@ -2941,118 +2974,157 @@ onUnmounted(() => {
                 @update:open="(open: boolean) => (open ? activateSettingsPage() : closeSettingsPage())"
                 @check-updates="checkUpdates()"
               />
-              <div v-if="activeTab" v-show="!driverStoreActive && !settingsStore.settingsPageActive" class="flex flex-col flex-1 min-h-0">
-                <EditorToolbar
-                  v-if="activeTab.mode === 'query' && !isPreviewTab(activeTab)"
-                  :active-tab="activeTab"
-                  :active-connection="activeConnection"
-                  :executable-sql="executableSql"
-                  :explain-mode="explainMode"
-                  :block-dangerous-redis-commands="blockDangerousRedisCommands"
-                  :sql-keyword-case="settingsStore.editorSettings.sqlFormatter.keywordCase"
-                  :database-required-signal="databaseRequiredTabId === activeTab.id ? databaseRequiredSignal : 0"
-                  :auto-commit="activeTab.autoCommit ?? true"
-                  :txn-session-id="activeTab?.txnSessionId"
-                  :txn-auto-rolled-back="activeTab?.txnAutoRolledBack"
-                  @update:explain-mode="(m: 'explain' | 'autotrace') => (explainMode = m)"
-                  @update:block-dangerous-redis-commands="(v: boolean) => (blockDangerousRedisCommands = v)"
-                  @update:auto-commit="
-                    (v: boolean) => {
-                      if (activeTab) queryStore.setAutoCommit(activeTab.id, v);
-                    }
-                  "
-                  @commit="activeTab && queryStore.commitTransaction(activeTab.id)"
-                  @rollback="activeTab && queryStore.rollbackTransaction(activeTab.id)"
-                  @dismiss-txn-rolled-back="activeTab && (activeTab.txnAutoRolledBack = false)"
-                  @execute="requestActiveEditorExecute()"
-                  @multi-execute="requestMultiDbExecute()"
-                  @cancel="cancelActiveExecution()"
-                  @explain="tryExplain()"
-                  @format-sql="formatActiveSql"
-                  @compress-sql="compressActiveSql"
-                  @toggle-sql-keyword-case="toggleSqlKeywordCase"
-                  @save-sql="void openSaveSqlDialog()"
-                  @open-sql="openSqlFile"
-                  @import-result-archive="importResultArchive"
-                  @paste-sql-in-condition="pasteClipboardAsSqlInCondition"
-                  @change-connection="changeActiveConnection"
-                  @change-database="changeActiveDatabase"
-                  @change-catalog="changeActiveCatalog"
-                  @change-schema="changeActiveSchema"
-                  @set-default-database="setActiveDatabaseAsDefault"
-                  @clear-default-database="clearActiveDefaultDatabase"
-                />
-                <KeepAlive :max="4">
-                  <ContentArea
-                    ref="contentAreaRef"
-                    :key="activeTab.id"
+              <div v-if="activeTab" v-show="!driverStoreActive && !settingsStore.settingsPageActive" ref="splitPaneRowEl" class="flex flex-1 min-h-0 min-w-0">
+                <div class="flex flex-col flex-1 min-h-0 min-w-0">
+                  <EditorToolbar
+                    v-if="activeTab.mode === 'query' && !isPreviewTab(activeTab)"
                     :active-tab="activeTab"
                     :active-connection="activeConnection"
                     :executable-sql="executableSql"
-                    :active-output-view="activeOutputView"
-                    :format-sql-request="formatSqlRequest"
-                    :compress-sql-request="compressSqlRequest"
-                    :selected-sql="selectedSql"
-                    :cursor-pos="cursorPos"
+                    :explain-mode="explainMode"
                     :block-dangerous-redis-commands="blockDangerousRedisCommands"
-                    @update:active-output-view="activeOutputView = $event"
-                    @fix-with-ai="fixWithAi"
-                    @send-selection-to-ai="sendSelectionToAi"
-                    @execute="tryExecute($event)"
-                    @execute-in-new-result-tab="tryExecuteInNewResultTab($event)"
+                    :sql-keyword-case="settingsStore.editorSettings.sqlFormatter.keywordCase"
+                    :database-required-signal="databaseRequiredTabId === activeTab.id ? databaseRequiredSignal : 0"
+                    :auto-commit="activeTab.autoCommit ?? true"
+                    :txn-session-id="activeTab?.txnSessionId"
+                    :txn-auto-rolled-back="activeTab?.txnAutoRolledBack"
+                    @update:explain-mode="(m: 'explain' | 'autotrace') => (explainMode = m)"
+                    @update:block-dangerous-redis-commands="(v: boolean) => (blockDangerousRedisCommands = v)"
+                    @update:auto-commit="
+                      (v: boolean) => {
+                        if (activeTab) queryStore.setAutoCommit(activeTab.id, v);
+                      }
+                    "
+                    @commit="activeTab && queryStore.commitTransaction(activeTab.id)"
+                    @rollback="activeTab && queryStore.rollbackTransaction(activeTab.id)"
+                    @dismiss-txn-rolled-back="activeTab && (activeTab.txnAutoRolledBack = false)"
+                    @execute="requestActiveEditorExecute()"
+                    @multi-execute="requestMultiDbExecute()"
                     @cancel="cancelActiveExecution()"
                     @explain="tryExplain()"
-                    @editor-update="(tabId: string, v: string) => queryStore.updateSql(tabId, v)"
-                    @editor-selection-change="(v: string) => (selectedSql = v)"
-                    @editor-cursor-change="(p: number) => (cursorPos = p)"
-                    @editor-viewport-change="(tabId: string, viewport: { scrollTop: number; scrollLeft: number }) => queryStore.updateEditorViewport(tabId, viewport)"
-                    @editor-selection-state-change="(tabId: string, selection: { anchor: number; head: number }) => queryStore.updateEditorSelection(tabId, selection)"
-                    @format-error="toast(t('toolbar.formatSqlFailed'))"
+                    @format-sql="formatActiveSql"
+                    @compress-sql="compressActiveSql"
+                    @toggle-sql-keyword-case="toggleSqlKeywordCase"
                     @save-sql="void openSaveSqlDialog()"
-                    @reload="(sql, searchText, whereInput, orderBy, limit, offset, intent) => onReloadData(sql, searchText, whereInput, orderBy, limit, offset, intent)"
-                    @paginate="onPaginate"
-                    @sort="onSort"
-                    @execute-sql="onExecuteSql"
-                    @click-table="onClickTable"
-                    @view-table-data="onViewTableData"
-                    @edit-table-structure="onEditTableStructure"
-                    @view-table-ddl="onViewTableDdl"
-                    @open-object-source="onOpenObjectSource"
-                    @open-object-table="
-                      (target) =>
-                        activeTab &&
-                        openObjectBrowserTableTarget({
-                          connectionId: activeTab.connectionId,
-                          database: activeTab.database,
-                          schema: target.schema,
-                          catalog: target.catalog,
-                          tableName: target.tableName,
-                          tableType: target.tableType,
-                        })
-                    "
-                    @object-schema-change="(schema) => activeTab && queryStore.updateSchema(activeTab.id, schema)"
-                    @object-browser-viewport-change="(tabId, viewport) => queryStore.updateObjectBrowserViewport(tabId, viewport)"
-                    @structure-editor-saved="
-                      (commentChanged) =>
-                        activeTab &&
-                        onStructureEditorSaved(
-                          onReloadData,
-                          toast,
-                          {
+                    @open-sql="openSqlFile"
+                    @import-result-archive="importResultArchive"
+                    @paste-sql-in-condition="pasteClipboardAsSqlInCondition"
+                    @change-connection="changeActiveConnection"
+                    @change-database="changeActiveDatabase"
+                    @change-catalog="changeActiveCatalog"
+                    @change-schema="changeActiveSchema"
+                    @set-default-database="setActiveDatabaseAsDefault"
+                    @clear-default-database="clearActiveDefaultDatabase"
+                  />
+                  <KeepAlive :max="4">
+                    <ContentArea
+                      ref="contentAreaRef"
+                      :key="activeTab.id"
+                      :active-tab="activeTab"
+                      :active-connection="activeConnection"
+                      :executable-sql="executableSql"
+                      :active-output-view="activeOutputView"
+                      :format-sql-request="formatSqlRequest"
+                      :compress-sql-request="compressSqlRequest"
+                      :selected-sql="selectedSql"
+                      :cursor-pos="cursorPos"
+                      :block-dangerous-redis-commands="blockDangerousRedisCommands"
+                      @update:active-output-view="activeOutputView = $event"
+                      @fix-with-ai="fixWithAi"
+                      @send-selection-to-ai="sendSelectionToAi"
+                      @execute="tryExecute($event)"
+                      @execute-in-new-result-tab="tryExecuteInNewResultTab($event)"
+                      @cancel="cancelActiveExecution()"
+                      @explain="tryExplain()"
+                      @editor-update="(tabId: string, v: string) => queryStore.updateSql(tabId, v)"
+                      @editor-selection-change="(v: string) => (selectedSql = v)"
+                      @editor-cursor-change="(p: number) => (cursorPos = p)"
+                      @editor-viewport-change="(tabId: string, viewport: { scrollTop: number; scrollLeft: number }) => queryStore.updateEditorViewport(tabId, viewport)"
+                      @editor-selection-state-change="(tabId: string, selection: { anchor: number; head: number }) => queryStore.updateEditorSelection(tabId, selection)"
+                      @format-error="toast(t('toolbar.formatSqlFailed'))"
+                      @save-sql="void openSaveSqlDialog()"
+                      @reload="(sql, searchText, whereInput, orderBy, limit, offset, intent) => onReloadData(sql, searchText, whereInput, orderBy, limit, offset, intent)"
+                      @paginate="onPaginate"
+                      @sort="onSort"
+                      @execute-sql="onExecuteSql"
+                      @click-table="onClickTable"
+                      @view-table-data="onViewTableData"
+                      @edit-table-structure="onEditTableStructure"
+                      @view-table-ddl="onViewTableDdl"
+                      @open-object-source="onOpenObjectSource"
+                      @open-object-table="
+                        (target) =>
+                          activeTab &&
+                          openObjectBrowserTableTarget({
                             connectionId: activeTab.connectionId,
                             database: activeTab.database,
-                            schema: activeTab.schema,
-                            catalog: activeTab.catalog,
-                            tableName: activeTab.structureTableName || '',
-                          },
-                          commentChanged,
-                        )
-                    "
-                    @structure-editor-close="activeTab && queryStore.closeTab(activeTab.id)"
-                    @open-settings="openSettings"
-                    @open-connection-settings="openConnectionSettings"
-                  />
-                </KeepAlive>
+                            schema: target.schema,
+                            catalog: target.catalog,
+                            tableName: target.tableName,
+                            tableType: target.tableType,
+                          })
+                      "
+                      @object-schema-change="(schema) => activeTab && queryStore.updateSchema(activeTab.id, schema)"
+                      @object-browser-viewport-change="(tabId, viewport) => queryStore.updateObjectBrowserViewport(tabId, viewport)"
+                      @structure-editor-saved="
+                        (commentChanged) =>
+                          activeTab &&
+                          onStructureEditorSaved(
+                            onReloadData,
+                            toast,
+                            {
+                              connectionId: activeTab.connectionId,
+                              database: activeTab.database,
+                              schema: activeTab.schema,
+                              catalog: activeTab.catalog,
+                              tableName: activeTab.structureTableName || '',
+                            },
+                            commentChanged,
+                          )
+                      "
+                      @structure-editor-close="activeTab && queryStore.closeTab(activeTab.id)"
+                      @open-settings="openSettings"
+                      @open-connection-settings="openConnectionSettings"
+                    />
+                  </KeepAlive>
+                </div>
+                <template v-if="splitPaneTab">
+                  <div class="w-1 shrink-0 cursor-col-resize bg-border transition-colors hover:bg-primary/60" :class="{ 'bg-primary': isSplitPaneResizing }" :aria-label="t('tabs.splitViewResizeHandle')" @pointerdown="beginSplitPaneResize(splitPaneRowEl)" />
+                  <div class="flex min-h-0 shrink-0 flex-col" :style="{ width: `${splitPaneWidthPercent}%` }">
+                    <div class="flex h-8 shrink-0 items-center gap-1.5 border-b border-border bg-muted/30 px-2">
+                      <span class="h-1.5 w-1.5 shrink-0 rounded-full" :class="queryStore.isTabDirty(splitPaneTab) ? 'bg-primary' : 'bg-transparent'" />
+                      <span class="min-w-0 flex-1 truncate text-xs text-muted-foreground" :title="splitPaneTab.title">{{ splitPaneTab.title }}</span>
+                      <span class="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground">{{ t("tabs.splitViewViewerBadge") }}</span>
+                      <Button variant="ghost" size="icon" class="h-6 w-6" :title="t('tabs.splitViewPromoteToMain')" :aria-label="t('tabs.splitViewPromoteToMain')" @click="promoteSplitPaneTabToMain()">
+                        <PanelLeft class="h-3.5 w-3.5" />
+                      </Button>
+                      <Button variant="ghost" size="icon" class="h-6 w-6" :title="t('tabs.splitViewClose')" :aria-label="t('tabs.splitViewClose')" @click="queryStore.closeSplitPane()">
+                        <X class="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                    <ContentArea
+                      :key="`split-${splitPaneTab.id}`"
+                      class="min-h-0 flex-1"
+                      :active-tab="splitPaneTab"
+                      :active-connection="splitPaneConnection"
+                      :executable-sql="splitPaneSelectedSql"
+                      :active-output-view="splitPaneOutputView"
+                      :format-sql-request="formatSqlRequest"
+                      :compress-sql-request="compressSqlRequest"
+                      :selected-sql="splitPaneSelectedSql"
+                      :cursor-pos="splitPaneCursorPos"
+                      :block-dangerous-redis-commands="blockDangerousRedisCommands"
+                      view-only
+                      @update:active-output-view="splitPaneOutputView = $event"
+                      @editor-selection-change="(v: string) => (splitPaneSelectedSql = v)"
+                      @editor-cursor-change="(p: number) => (splitPaneCursorPos = p)"
+                      @editor-viewport-change="(tabId: string, viewport: { scrollTop: number; scrollLeft: number }) => queryStore.updateEditorViewport(tabId, viewport)"
+                      @editor-selection-state-change="(tabId: string, selection: { anchor: number; head: number }) => queryStore.updateEditorSelection(tabId, selection)"
+                      @format-error="toast(t('toolbar.formatSqlFailed'))"
+                      @object-browser-viewport-change="(tabId, viewport) => queryStore.updateObjectBrowserViewport(tabId, viewport)"
+                    />
+                  </div>
+                </template>
               </div>
               <WelcomeScreen
                 v-else-if="!driverStoreActive && !settingsStore.settingsPageActive"

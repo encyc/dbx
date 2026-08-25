@@ -646,8 +646,8 @@ let saveTabsQueue = Promise.resolve();
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 let persistGeneration = 0;
 
-function saveTabs(tabs: QueryTab[], activeTabId: string | null): Promise<void> {
-  const payload = { tabs: serializeOpenTabs(tabs), activeTabId };
+function saveTabs(tabs: QueryTab[], activeTabId: string | null, splitPaneTabId: string | null): Promise<void> {
+  const payload = { tabs: serializeOpenTabs(tabs), activeTabId, ...(splitPaneTabId ? { splitPaneTabId } : {}) };
   saveTabsQueue = saveTabsQueue.catch(() => undefined).then(() => api.saveOpenTabsState(payload));
   return saveTabsQueue;
 }
@@ -711,6 +711,9 @@ export const useQueryStore = defineStore("query", () => {
     return keys;
   });
   const activeTabId = ref<string | null>(null);
+  // The tab shown in the side-by-side reference pane, or null when the split
+  // view is closed. The main pane keeps rendering activeTabId as before.
+  const splitPaneTabId = ref<string | null>(null);
   const isOpenTabsLoaded = ref(false);
   const activeTabHistory = ref<string[]>([]);
   // Most-recently-activated tab ids, oldest first. Read-only view for the
@@ -1591,7 +1594,7 @@ export const useQueryStore = defineStore("query", () => {
     clearResultPayload(tab, { evicted: true });
   }
 
-  function applyRestoredOpenTabs(restored: { tabs: QueryTab[]; activeTabId: string | null }) {
+  function applyRestoredOpenTabs(restored: { tabs: QueryTab[]; activeTabId: string | null; splitPaneTabId?: string | null }) {
     const connectionStore = useConnectionStore();
     for (const tab of restored.tabs) {
       const connection = connectionStore.getConfig(tab.connectionId);
@@ -1603,6 +1606,7 @@ export const useQueryStore = defineStore("query", () => {
     }
     tabs.value = restored.tabs;
     activeTabId.value = restored.activeTabId;
+    splitPaneTabId.value = restored.splitPaneTabId && restored.tabs.some((tab) => tab.id === restored.splitPaneTabId) ? restored.splitPaneTabId : null;
     activeTabHistory.value = restored.activeTabId ? [restored.activeTabId] : [];
     for (const tab of restored.tabs) {
       if (tab.mode === "data") void deleteTabResultSnapshot(tabResultCacheKey(tab.id));
@@ -1629,7 +1633,7 @@ export const useQueryStore = defineStore("query", () => {
         // Restore is explicitly disabled, so stale saved payloads should not
         // reappear if the user later changes the setting.
         clearLegacySavedTabs();
-        await saveTabs(tabs.value, activeTabId.value).catch(() => undefined);
+        await saveTabs(tabs.value, activeTabId.value, splitPaneTabId.value).catch(() => undefined);
       }
       isOpenTabsLoaded.value = true;
       scheduleResultCacheMaintenance();
@@ -1649,7 +1653,7 @@ export const useQueryStore = defineStore("query", () => {
         return;
       }
       try {
-        await saveTabs(tabs.value, activeTabId.value);
+        await saveTabs(tabs.value, activeTabId.value, splitPaneTabId.value);
         // Keep old desktop installs readable until the async store has the
         // migrated state; only then remove the synchronous startup payload.
         clearLegacySavedTabs();
@@ -1714,16 +1718,26 @@ export const useQueryStore = defineStore("query", () => {
 
   const storePersistGeneration = ++persistGeneration;
   watch(
-    [_persistSnapshot, activeTabId],
+    [_persistSnapshot, activeTabId, splitPaneTabId],
     () => {
       if (storePersistGeneration !== persistGeneration) return;
       if (persistTimer) clearTimeout(persistTimer);
       persistTimer = setTimeout(() => {
-        void saveTabs(tabs.value, activeTabId.value).catch(() => {});
+        void saveTabs(tabs.value, activeTabId.value, splitPaneTabId.value).catch(() => {});
         persistTimer = null;
       }, 300);
     },
     { flush: "post" },
+  );
+
+  // A tab must never be the main pane and the split reference pane at once,
+  // regardless of which code path activates it (tab bar, switcher, sidebar).
+  watch(
+    activeTabId,
+    (tabId) => {
+      if (tabId && tabId === splitPaneTabId.value) splitPaneTabId.value = null;
+    },
+    { flush: "sync" },
   );
 
   onScopeDispose(() => {
@@ -1742,7 +1756,7 @@ export const useQueryStore = defineStore("query", () => {
       clearTimeout(persistTimer);
       persistTimer = null;
     }
-    return saveTabs(tabs.value, activeTabId.value);
+    return saveTabs(tabs.value, activeTabId.value, splitPaneTabId.value);
   }
 
   function findTabByIdentity(connectionId: string, database: string, title: string, mode: QueryTab["mode"], schema?: string, catalog?: string) {
@@ -1976,6 +1990,21 @@ export const useQueryStore = defineStore("query", () => {
     activeTabId.value = tabId;
     settingsStore.settingsPageActive = false;
     if (typeof window !== "undefined") window.dispatchEvent(new Event(QUERY_SURFACE_ACTIVATION_EVENT));
+  }
+
+  function openTabInSplitPane(tabId: string) {
+    if (tabId === activeTabId.value) return;
+    if (!tabs.value.some((tab) => tab.id === tabId)) return;
+    splitPaneTabId.value = tabId;
+    touchResult(
+      tabs.value.find((tab) => tab.id === tabId),
+      Date.now(),
+      { reuseEstimatedBytes: true },
+    );
+  }
+
+  function closeSplitPane() {
+    splitPaneTabId.value = null;
   }
 
   function openUserAdmin(connectionId: string) {
@@ -2623,6 +2652,7 @@ export const useQueryStore = defineStore("query", () => {
     }
     const idx = tabs.value.findIndex((t) => t.id === id);
     if (idx < 0) return;
+    if (splitPaneTabId.value === id) splitPaneTabId.value = null;
     persistSavedSqlEditorPosition(tabs.value[idx]);
     if (tab.mode === "sqlserver-trace") void disposeSqlServerActivityTrace(tab.id);
     clearDataGridPendingSnapshotsForTab(id);
@@ -6046,7 +6076,9 @@ export const useQueryStore = defineStore("query", () => {
   }
 
   async function trimResultCache() {
-    const inactive = tabs.value.filter((t) => t.id !== activeTabId.value && (t.result || t.results));
+    // The split reference pane displays its tab's results without going through
+    // the active-tab reload path, so its result payload must stay in memory.
+    const inactive = tabs.value.filter((t) => t.id !== activeTabId.value && t.id !== splitPaneTabId.value && (t.result || t.results));
     const evictionIds = new Set(
       selectInactiveResultEvictions(
         inactive.map((tab) => ({
@@ -6605,6 +6637,9 @@ export const useQueryStore = defineStore("query", () => {
     openObjectSourceTab,
     showExecutedQueryResults,
     switchTab,
+    splitPaneTabId,
+    openTabInSplitPane,
+    closeSplitPane,
     closeTab,
     forceClosePendingTab,
     forceCloseAllPendingTabs,

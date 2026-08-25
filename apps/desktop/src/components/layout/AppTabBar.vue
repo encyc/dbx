@@ -2,7 +2,7 @@
 import { computed, ref, watch, nextTick, onUnmounted } from "vue";
 import type { CSSProperties } from "vue";
 import { useI18n } from "vue-i18n";
-import { X, Pin, ChevronDown, Search, Table2, Code2, TableProperties, PencilRuler, KeyRound, Pencil, Package, Lock, Copy, AlertTriangle, Network, Minimize2, Maximize2, Settings, CalendarClock, Activity, Gauge, ShieldCheck, Database, GitBranch, Crosshair } from "@lucide/vue";
+import { X, Pin, ChevronDown, Search, Table2, Code2, TableProperties, PencilRuler, KeyRound, Pencil, Package, Lock, Copy, AlertTriangle, Network, Minimize2, Maximize2, Settings, CalendarClock, Activity, Gauge, ShieldCheck, Database, GitBranch, Crosshair, Columns2 } from "@lucide/vue";
 import CustomContextMenu, { type ContextMenuItem } from "@/components/ui/CustomContextMenu.vue";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -42,6 +42,7 @@ const emit = defineEmits<{
   "save-all-tab-close": [];
   "discard-all-tab-close": [];
   "cancel-tab-close": [];
+  "open-in-split-view": [tabId: string];
 }>();
 
 const { t } = useI18n();
@@ -307,6 +308,12 @@ function getTabMenuItems(tab: QueryTab): ContextMenuItem[] {
       action: () => queryStore.duplicateTab(tab.id),
       icon: Copy,
       visible: canRenameTab(tab),
+    },
+    {
+      label: t("tabs.openInSplitView"),
+      action: () => emit("open-in-split-view", tab.id),
+      icon: Columns2,
+      disabled: tab.id === queryStore.activeTabId || tab.id === queryStore.splitPaneTabId,
     },
     {
       label: t("contextMenu.copyName"),
@@ -743,6 +750,12 @@ function onOverflowItemKeydown(event: KeyboardEvent, tabId: string, kind: "regul
                       </TooltipTrigger>
                       <TooltipContent>{{ t("connection.readOnlyBadge") }}</TooltipContent>
                     </Tooltip>
+                    <Tooltip v-if="tab.id === queryStore.splitPaneTabId">
+                      <TooltipTrigger as-child>
+                        <Columns2 class="h-3 w-3 shrink-0 text-primary" aria-hidden="true" />
+                      </TooltipTrigger>
+                      <TooltipContent>{{ t("tabs.splitViewTabIndicator") }}</TooltipContent>
+                    </Tooltip>
                     <button class="rounded hover:bg-muted-foreground/20 p-0.5 shrink-0" @click.stop="queryStore.closeTab(tab.id)">
                       <X class="h-3 w-3" />
                     </button>
@@ -848,6 +861,7 @@ function onOverflowItemKeydown(event: KeyboardEvent, tabId: string, kind: "regul
                     <span class="min-w-0 flex-1 truncate" :style="tabTitleStyle(tab)">{{ tabTitleText(tab) }}</span>
                   </span>
                   <Lock v-if="isConnectionReadonly(tab.connectionId)" class="h-3 w-3 shrink-0 text-muted-foreground" />
+                  <Columns2 v-if="tab.id === queryStore.splitPaneTabId" class="h-3 w-3 shrink-0 text-primary" aria-hidden="true" />
                   <Pin v-if="tab.pinned" class="h-3 w-3 shrink-0 fill-current text-primary" />
                   <span class="w-5 shrink-0">
                     <button
@@ -949,6 +963,12 @@ function onOverflowItemKeydown(event: KeyboardEvent, tabId: string, kind: "regul
                       </TooltipTrigger>
                       <TooltipContent>{{ t("connection.readOnlyBadge") }}</TooltipContent>
                     </Tooltip>
+                    <Tooltip v-if="tab.id === queryStore.splitPaneTabId">
+                      <TooltipTrigger as-child>
+                        <Columns2 class="h-3 w-3 shrink-0 text-primary" aria-hidden="true" />
+                      </TooltipTrigger>
+                      <TooltipContent>{{ t("tabs.splitViewTabIndicator") }}</TooltipContent>
+                    </Tooltip>
                     <button class="rounded p-0.5 text-primary hover:bg-muted-foreground/20 shrink-0" :aria-label="t('contextMenu.unfixTab')" :title="t('contextMenu.unfixTab')" @click.stop="queryStore.togglePinnedTab(tab.id)">
                       <Pin class="h-3 w-3 fill-current" aria-hidden="true" />
                     </button>
@@ -1000,6 +1020,7 @@ function onOverflowItemKeydown(event: KeyboardEvent, tabId: string, kind: "regul
                     <span class="min-w-0 flex-1 truncate" :style="tabTitleStyle(tab)">{{ tabTitleText(tab) }}</span>
                   </span>
                   <Lock v-if="isConnectionReadonly(tab.connectionId)" class="h-3 w-3 shrink-0 text-muted-foreground" />
+                  <Columns2 v-if="tab.id === queryStore.splitPaneTabId" class="h-3 w-3 shrink-0 text-primary" aria-hidden="true" />
                   <Pin v-if="tab.pinned" class="h-3 w-3 shrink-0 fill-current text-primary" />
                   <span class="w-5 shrink-0">
                     <button

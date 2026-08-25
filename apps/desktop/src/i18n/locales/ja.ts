@@ -1365,6 +1365,12 @@ export default withEnglishFallback({
   },
   tabs: {
     sql: "SQL",
+    openInSplitView: "分割ビューで開く",
+    splitViewViewerBadge: "表示",
+    splitViewPromoteToMain: "メインペインにする",
+    splitViewClose: "分割ビューを閉じる",
+    splitViewTabIndicator: "分割ビューに表示中",
+    splitViewResizeHandle: "分割ビューのサイズ変更",
     table: "テーブル",
     tableData: "テーブルデータ",
     redis: "Redis",

@@ -1247,6 +1247,12 @@ export default withEnglishFallback({
   },
   tabs: {
     sql: "SQL",
+    openInSplitView: "분할 보기로 열기",
+    splitViewViewerBadge: "보기",
+    splitViewPromoteToMain: "기본 창으로 설정",
+    splitViewClose: "분할 보기 닫기",
+    splitViewTabIndicator: "분할 보기에 표시됨",
+    splitViewResizeHandle: "분할 보기 크기 조정",
     table: "테이블",
     tableData: "테이블 데이터",
     redis: "Redis",

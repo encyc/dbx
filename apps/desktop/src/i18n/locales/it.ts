@@ -1344,6 +1344,12 @@ export default withEnglishFallback({
   },
   tabs: {
     sql: "SQL",
+    openInSplitView: "Apri in vista divisa",
+    splitViewViewerBadge: "Visualizza",
+    splitViewPromoteToMain: "Imposta come riquadro principale",
+    splitViewClose: "Chiudi vista divisa",
+    splitViewTabIndicator: "Mostrato nella vista divisa",
+    splitViewResizeHandle: "Ridimensiona vista divisa",
     table: "Tabella",
     tableData: "Dati Tabella",
     redis: "Redis",

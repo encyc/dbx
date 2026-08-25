@@ -1364,6 +1364,12 @@ export default {
   },
   tabs: {
     sql: "SQL",
+    openInSplitView: "Open in split view",
+    splitViewViewerBadge: "View",
+    splitViewPromoteToMain: "Set as main pane",
+    splitViewClose: "Close split view",
+    splitViewTabIndicator: "Displayed in split view",
+    splitViewResizeHandle: "Resize split view",
     table: "Table",
     tableData: "Table Data",
     redis: "Redis",

@@ -63,6 +63,7 @@ export interface SavedOpenTab {
 export interface RestoredOpenTabs {
   tabs: QueryTab[];
   activeTabId: string | null;
+  splitPaneTabId: string | null;
 }
 
 export type OpenTabsRestoreFilter = "all" | "pinned";
@@ -157,8 +158,8 @@ function isSavedOpenTab(value: unknown): value is SavedOpenTab {
   return typeof tab.id === "string" && typeof tab.title === "string" && typeof tab.connectionId === "string" && typeof tab.database === "string" && (typeof tab.sql === "string" || typeof tab.savedSqlId === "string");
 }
 
-function restoreOpenTabsArray(parsed: unknown, rawActiveTabId: string | null, options: OpenTabsRestoreOptions = {}): RestoredOpenTabs {
-  if (!Array.isArray(parsed)) return { tabs: [], activeTabId: null };
+function restoreOpenTabsArray(parsed: unknown, rawActiveTabId: string | null, rawSplitPaneTabId: string | null, options: OpenTabsRestoreOptions = {}): RestoredOpenTabs {
+  if (!Array.isArray(parsed)) return { tabs: [], activeTabId: null, splitPaneTabId: null };
 
   try {
     const validConnectionIds = options.validConnectionIds ? new Set(options.validConnectionIds) : undefined;
@@ -205,23 +206,24 @@ function restoreOpenTabsArray(parsed: unknown, rawActiveTabId: string | null, op
     return {
       tabs,
       activeTabId: tabs.some((tab) => tab.id === activeTabId) ? activeTabId : tabs[0]?.id || null,
+      splitPaneTabId: rawSplitPaneTabId && rawSplitPaneTabId !== activeTabId && tabs.some((tab) => tab.id === rawSplitPaneTabId) ? rawSplitPaneTabId : null,
     };
   } catch {
-    return { tabs: [], activeTabId: null };
+    return { tabs: [], activeTabId: null, splitPaneTabId: null };
   }
 }
 
-export function restoreOpenTabsPayload(payload: { tabs?: unknown; activeTabId?: unknown } | null | undefined, options: OpenTabsRestoreOptions = {}): RestoredOpenTabs {
-  if (!payload) return { tabs: [], activeTabId: null };
-  return restoreOpenTabsArray(payload.tabs, typeof payload.activeTabId === "string" ? payload.activeTabId : null, options);
+export function restoreOpenTabsPayload(payload: { tabs?: unknown; activeTabId?: unknown; splitPaneTabId?: unknown } | null | undefined, options: OpenTabsRestoreOptions = {}): RestoredOpenTabs {
+  if (!payload) return { tabs: [], activeTabId: null, splitPaneTabId: null };
+  return restoreOpenTabsArray(payload.tabs, typeof payload.activeTabId === "string" ? payload.activeTabId : null, typeof payload.splitPaneTabId === "string" ? payload.splitPaneTabId : null, options);
 }
 
 export function restoreOpenTabsState(rawTabs: string | null, rawActiveTabId: string | null, options: OpenTabsRestoreOptions = {}): RestoredOpenTabs {
-  if (!rawTabs) return { tabs: [], activeTabId: null };
+  if (!rawTabs) return { tabs: [], activeTabId: null, splitPaneTabId: null };
 
   try {
-    return restoreOpenTabsArray(JSON.parse(rawTabs), rawActiveTabId, options);
+    return restoreOpenTabsArray(JSON.parse(rawTabs), rawActiveTabId, null, options);
   } catch {
-    return { tabs: [], activeTabId: null };
+    return { tabs: [], activeTabId: null, splitPaneTabId: null };
   }
 }

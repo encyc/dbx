@@ -1345,6 +1345,12 @@ export default withEnglishFallback({
   },
   tabs: {
     sql: "SQL",
+    openInSplitView: "Abrir em exibição dividida",
+    splitViewViewerBadge: "Exibição",
+    splitViewPromoteToMain: "Definir como painel principal",
+    splitViewClose: "Fechar exibição dividida",
+    splitViewTabIndicator: "Exibido na exibição dividida",
+    splitViewResizeHandle: "Redimensionar exibição dividida",
     table: "Tabela",
     tableData: "Dados da Tabela",
     redis: "Redis",
