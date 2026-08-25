@@ -542,6 +542,9 @@ const dialogs = useDialogSources();
 const { getDatabaseOptions } = useDatabaseOptions();
 const { openLineageTarget, openDatabaseSearchTarget, openDiagramTarget, openObjectBrowserTableTarget, onStructureEditorSaved, openTableTarget } = useNavigationTargets(dialogs);
 const { onExecuteSql, onReloadData, onPaginate, onSort } = useDataGridActions(activeTab);
+// A second instance bound to the reference pane's tab so pagination, sorting
+// and reload from the split view operate on the displayed tab, not activeTab.
+const { onExecuteSql: onSplitPaneExecuteSql, onReloadData: onSplitPaneReloadData, onPaginate: onSplitPanePaginate, onSort: onSplitPaneSort } = useDataGridActions(splitPaneTab);
 const { setupTauriListeners, cleanupTauriListeners } = useTauriEvents({
   openTableTarget,
   openSqlFilePath,
@@ -3122,6 +3125,10 @@ onUnmounted(() => {
                       @editor-selection-state-change="(tabId: string, selection: { anchor: number; head: number }) => queryStore.updateEditorSelection(tabId, selection)"
                       @format-error="toast(t('toolbar.formatSqlFailed'))"
                       @object-browser-viewport-change="(tabId, viewport) => queryStore.updateObjectBrowserViewport(tabId, viewport)"
+                      @reload="(sql, searchText, whereInput, orderBy, limit, offset, intent) => onSplitPaneReloadData(sql, searchText, whereInput, orderBy, limit, offset, intent)"
+                      @paginate="onSplitPanePaginate"
+                      @sort="onSplitPaneSort"
+                      @execute-sql="onSplitPaneExecuteSql"
                     />
                   </div>
                 </template>
