@@ -106,8 +106,10 @@ import { eventToModifierOnlyShortcut, eventToShortcut } from "@/lib/editor/keybo
 import { SHORTCUT_DEFINITIONS, findShortcutConflict, normalizeShortcutSettings, type ShortcutActionId } from "@/lib/editor/shortcutRegistry";
 import { formatShortcutDisplay } from "@/lib/editor/shortcutDisplay";
 import { normalizeSidebarHiddenTablePrefixes } from "@/lib/sidebar/sidebarTableNameDisplay";
+import { normalizeRedisKeyTemplates } from "@/lib/redis/redisKeyTemplates";
 import { currentStatementFrameRangeTo } from "@/lib/sql/currentStatementFrame";
 import { currentStatementFrameLayer } from "@/lib/editor/codemirrorCurrentStatementFrameLayer";
+import { buildQueryEditorLineNumbersExtension } from "@/lib/editor/queryEditorLineNumbers";
 import { normalizeSqlFormatterSettings, type SqlFormatterSettings } from "@/lib/sql/sqlFormatterConfig";
 import { validateConfigName, generateId, type AiConfigItem, type ConfigNameValidationResult } from "@/lib/ai/aiConfigList";
 import { currentExecutableStatementRange, type SqlTextRange } from "@/lib/sql/sqlStatementRanges";
@@ -331,6 +333,7 @@ const editShowInsertValueHints = ref(settingsStore.editorSettings.showInsertValu
 const editAutoAliasTables = ref(settingsStore.editorSettings.autoAliasTables);
 const editInsertSpaceAfterCompletion = ref(settingsStore.editorSettings.insertSpaceAfterCompletion);
 const editSortCompletionColumnsAlphabetically = ref(settingsStore.editorSettings.sortCompletionColumnsAlphabetically);
+const editSelectFirstCompletionOnOpen = ref(settingsStore.editorSettings.selectFirstCompletionOnOpen);
 const editCompletionTriggerMode = ref<SqlCompletionTriggerMode>(settingsStore.editorSettings.completionTriggerMode);
 const editWordWrap = ref(settingsStore.editorSettings.wordWrap);
 const editVimModeEnabled = ref(settingsStore.editorSettings.vimModeEnabled);
@@ -450,9 +453,11 @@ const editDataTabReuseMode = ref<DataTabReuseMode>(settingsStore.editorSettings.
 const editOpenDataTabsNextToActive = ref(settingsStore.editorSettings.openDataTabsNextToActive);
 const editPrefillNewQueryWithSelect = ref(settingsStore.editorSettings.prefillNewQueryWithSelect);
 const editGenerateSqlIncludeDatabaseName = ref(settingsStore.editorSettings.generateSqlIncludeDatabaseName);
+const editFormatSqlOnSqlFileSave = ref(settingsStore.editorSettings.formatSqlOnSqlFileSave);
 const editClickTableNavigationTarget = ref<ClickTableNavigationTarget>(settingsStore.editorSettings.clickTableNavigationTarget);
 const editUpdateNotificationsEnabled = ref(settingsStore.editorSettings.updateNotificationsEnabled);
 const editSidebarHiddenTablePrefixes = ref(settingsStore.editorSettings.sidebarHiddenTablePrefixes.join("\n"));
+const editRedisKeyTemplates = ref(normalizeRedisKeyTemplates(settingsStore.editorSettings.redisKeyTemplates).join("\n"));
 const editSidebarObjectInfoMode = ref<SidebarObjectInfoMode>(settingsStore.editorSettings.sidebarObjectInfoMode);
 const editSidebarAllowHorizontalScroll = ref(settingsStore.editorSettings.sidebarAllowHorizontalScroll);
 const editSidebarIndent = ref(settingsStore.editorSettings.sidebarIndent);
@@ -534,6 +539,7 @@ function currentEditorSettingsDraft(): EditorSettingsDraft {
     autoAliasTables: editAutoAliasTables.value,
     insertSpaceAfterCompletion: editInsertSpaceAfterCompletion.value,
     sortCompletionColumnsAlphabetically: editSortCompletionColumnsAlphabetically.value,
+    selectFirstCompletionOnOpen: editSelectFirstCompletionOnOpen.value,
     completionTriggerMode: editCompletionTriggerMode.value,
     wordWrap: editWordWrap.value,
     vimModeEnabled: editVimModeEnabled.value,
@@ -582,12 +588,14 @@ function currentEditorSettingsDraft(): EditorSettingsDraft {
     openDataTabsNextToActive: editOpenDataTabsNextToActive.value,
     prefillNewQueryWithSelect: editPrefillNewQueryWithSelect.value,
     generateSqlIncludeDatabaseName: editGenerateSqlIncludeDatabaseName.value,
+    formatSqlOnSqlFileSave: editFormatSqlOnSqlFileSave.value,
     updateNotificationsEnabled: editUpdateNotificationsEnabled.value,
     sidebarObjectInfoMode: editSidebarObjectInfoMode.value,
     sidebarAllowHorizontalScroll: editSidebarAllowHorizontalScroll.value,
     sidebarIndent: editSidebarIndent.value,
     sidebarFontSize: editSidebarFontSize.value,
     sidebarHiddenTablePrefixes: normalizeSidebarHiddenTablePrefixes(editSidebarHiddenTablePrefixes.value),
+    redisKeyTemplates: normalizeRedisKeyTemplates(editRedisKeyTemplates.value),
     exportBatchSize: editExportBatchSize.value,
     globalDateTimeDisplayFormat: editGlobalDateTimeDisplayFormat.value,
     globalDateTimeExportFormat: editGlobalDateTimeExportFormat.value,
@@ -822,6 +830,7 @@ function syncEditorSettingsDraftFromStore() {
   editAutoAliasTables.value = settingsStore.editorSettings.autoAliasTables;
   editInsertSpaceAfterCompletion.value = settingsStore.editorSettings.insertSpaceAfterCompletion;
   editSortCompletionColumnsAlphabetically.value = settingsStore.editorSettings.sortCompletionColumnsAlphabetically;
+  editSelectFirstCompletionOnOpen.value = settingsStore.editorSettings.selectFirstCompletionOnOpen;
   editCompletionTriggerMode.value = settingsStore.editorSettings.completionTriggerMode;
   editWordWrap.value = settingsStore.editorSettings.wordWrap;
   editVimModeEnabled.value = settingsStore.editorSettings.vimModeEnabled;
@@ -872,9 +881,11 @@ function syncEditorSettingsDraftFromStore() {
   editOpenDataTabsNextToActive.value = settingsStore.editorSettings.openDataTabsNextToActive;
   editPrefillNewQueryWithSelect.value = settingsStore.editorSettings.prefillNewQueryWithSelect;
   editGenerateSqlIncludeDatabaseName.value = settingsStore.editorSettings.generateSqlIncludeDatabaseName;
+  editFormatSqlOnSqlFileSave.value = settingsStore.editorSettings.formatSqlOnSqlFileSave;
   editClickTableNavigationTarget.value = settingsStore.editorSettings.clickTableNavigationTarget;
   editUpdateNotificationsEnabled.value = settingsStore.editorSettings.updateNotificationsEnabled;
   editSidebarHiddenTablePrefixes.value = settingsStore.editorSettings.sidebarHiddenTablePrefixes.join("\n");
+  editRedisKeyTemplates.value = normalizeRedisKeyTemplates(settingsStore.editorSettings.redisKeyTemplates).join("\n");
   editSidebarObjectInfoMode.value = settingsStore.editorSettings.sidebarObjectInfoMode;
   editSidebarAllowHorizontalScroll.value = settingsStore.editorSettings.sidebarAllowHorizontalScroll;
   editSidebarIndent.value = settingsStore.editorSettings.sidebarIndent;
@@ -1075,6 +1086,7 @@ function resetDefaultsForTab(tab: SettingsCategory) {
     editAutoAliasTables.value = DEFAULT_EDITOR_SETTINGS.autoAliasTables;
     editInsertSpaceAfterCompletion.value = DEFAULT_EDITOR_SETTINGS.insertSpaceAfterCompletion;
     editSortCompletionColumnsAlphabetically.value = DEFAULT_EDITOR_SETTINGS.sortCompletionColumnsAlphabetically;
+    editSelectFirstCompletionOnOpen.value = DEFAULT_EDITOR_SETTINGS.selectFirstCompletionOnOpen;
     editCompletionTriggerMode.value = DEFAULT_EDITOR_SETTINGS.completionTriggerMode;
     editWordWrap.value = DEFAULT_EDITOR_SETTINGS.wordWrap;
     editVimModeEnabled.value = DEFAULT_EDITOR_SETTINGS.vimModeEnabled;
@@ -1121,6 +1133,7 @@ function resetDefaultsForTab(tab: SettingsCategory) {
     editOpenDataTabsNextToActive.value = DEFAULT_EDITOR_SETTINGS.openDataTabsNextToActive;
     editPrefillNewQueryWithSelect.value = DEFAULT_EDITOR_SETTINGS.prefillNewQueryWithSelect;
     editGenerateSqlIncludeDatabaseName.value = DEFAULT_EDITOR_SETTINGS.generateSqlIncludeDatabaseName;
+    editFormatSqlOnSqlFileSave.value = DEFAULT_EDITOR_SETTINGS.formatSqlOnSqlFileSave;
     editClickTableNavigationTarget.value = DEFAULT_EDITOR_SETTINGS.clickTableNavigationTarget;
     editUpdateNotificationsEnabled.value = DEFAULT_EDITOR_SETTINGS.updateNotificationsEnabled;
     editSidebarObjectInfoMode.value = DEFAULT_EDITOR_SETTINGS.sidebarObjectInfoMode;
@@ -1154,6 +1167,7 @@ function resetDefaultsForTab(tab: SettingsCategory) {
     editDuckDbWorkerProcessIsolation.value = DEFAULT_DESKTOP_SETTINGS.duckdb_worker_process_isolation;
     editDuckDbWorkerMaxProcesses.value = DEFAULT_DESKTOP_SETTINGS.duckdb_worker_max_processes;
     editTableColumnTemplateRows.value = tableColumnTemplateRowsFromSettings(DEFAULT_EDITOR_SETTINGS.tableColumnTemplateFields);
+    editRedisKeyTemplates.value = normalizeRedisKeyTemplates(DEFAULT_EDITOR_SETTINGS.redisKeyTemplates).join("\n");
     editExportBatchSize.value = DEFAULT_EDITOR_SETTINGS.exportBatchSize;
     editGlobalDateTimeDisplayFormat.value = DEFAULT_EDITOR_SETTINGS.globalDateTimeDisplayFormat;
     editGlobalDateTimeExportFormat.value = DEFAULT_EDITOR_SETTINGS.globalDateTimeExportFormat;
@@ -1189,6 +1203,7 @@ function resetAllDefaults() {
   editAutoAliasTables.value = DEFAULT_EDITOR_SETTINGS.autoAliasTables;
   editInsertSpaceAfterCompletion.value = DEFAULT_EDITOR_SETTINGS.insertSpaceAfterCompletion;
   editSortCompletionColumnsAlphabetically.value = DEFAULT_EDITOR_SETTINGS.sortCompletionColumnsAlphabetically;
+  editSelectFirstCompletionOnOpen.value = DEFAULT_EDITOR_SETTINGS.selectFirstCompletionOnOpen;
   editWordWrap.value = DEFAULT_EDITOR_SETTINGS.wordWrap;
   editVimModeEnabled.value = DEFAULT_EDITOR_SETTINGS.vimModeEnabled;
   editAutoCloseBrackets.value = DEFAULT_EDITOR_SETTINGS.autoCloseBrackets;
@@ -1247,12 +1262,14 @@ function resetAllDefaults() {
   editOpenDataTabsNextToActive.value = DEFAULT_EDITOR_SETTINGS.openDataTabsNextToActive;
   editPrefillNewQueryWithSelect.value = DEFAULT_EDITOR_SETTINGS.prefillNewQueryWithSelect;
   editGenerateSqlIncludeDatabaseName.value = DEFAULT_EDITOR_SETTINGS.generateSqlIncludeDatabaseName;
+  editFormatSqlOnSqlFileSave.value = DEFAULT_EDITOR_SETTINGS.formatSqlOnSqlFileSave;
   editUpdateNotificationsEnabled.value = DEFAULT_EDITOR_SETTINGS.updateNotificationsEnabled;
   editSidebarObjectInfoMode.value = DEFAULT_EDITOR_SETTINGS.sidebarObjectInfoMode;
   editSidebarAllowHorizontalScroll.value = DEFAULT_EDITOR_SETTINGS.sidebarAllowHorizontalScroll;
   editSidebarIndent.value = DEFAULT_EDITOR_SETTINGS.sidebarIndent;
   editSidebarFontSize.value = DEFAULT_EDITOR_SETTINGS.sidebarFontSize;
   editSidebarHiddenTablePrefixes.value = DEFAULT_EDITOR_SETTINGS.sidebarHiddenTablePrefixes.join("\n");
+  editRedisKeyTemplates.value = normalizeRedisKeyTemplates(DEFAULT_EDITOR_SETTINGS.redisKeyTemplates).join("\n");
   editExportBatchSize.value = DEFAULT_EDITOR_SETTINGS.exportBatchSize;
   editGlobalDateTimeDisplayFormat.value = DEFAULT_EDITOR_SETTINGS.globalDateTimeDisplayFormat;
   editGlobalDateTimeExportFormat.value = DEFAULT_EDITOR_SETTINGS.globalDateTimeExportFormat;
@@ -3409,6 +3426,7 @@ const previewSettings = computed<{
   appPalette: AppThemePalette;
   customColors?: CustomThemeColors;
   showStatementRunButtons: boolean;
+  showLineNumbers: boolean;
   showCurrentStatementFrame: boolean;
 }>(() => ({
   fontFamily: editFontFamily.value,
@@ -3418,6 +3436,7 @@ const previewSettings = computed<{
   appPalette: themePalette.value,
   customColors: getPreviewCustomThemeColors(),
   showStatementRunButtons: editShowStatementRunButtons.value,
+  showLineNumbers: editShowLineNumbers.value,
   showCurrentStatementFrame: editShowCurrentStatementFrame.value,
 }));
 
@@ -3440,7 +3459,9 @@ let fontThemeComp: import("@codemirror/state").Compartment | null = null;
 let themeComp: import("@codemirror/state").Compartment | null = null;
 let diagnosticComp: import("@codemirror/state").Compartment | null = null;
 let previewRunGutterComp: import("@codemirror/state").Compartment | null = null;
+let previewLineNumbersComp: import("@codemirror/state").Compartment | null = null;
 let currentStatementFrameComp: import("@codemirror/state").Compartment | null = null;
+let previewLineNumbersFactory: typeof import("@codemirror/view").lineNumbers | null = null;
 let setPreviewDiagnosticsEffect: import("@codemirror/state").StateEffectType<PreviewSqlDiagnostic[]> | null = null;
 let setPreviewRunHighlightEffect:
   | import("@codemirror/state").StateEffectType<{
@@ -3555,16 +3576,23 @@ function previewCurrentStatementFrameTo(view: import("@codemirror/view").EditorV
   return currentStatementFrameRangeTo(view.state.doc, range);
 }
 
+function buildPreviewLineNumbersExtension(enabled: boolean) {
+  return buildQueryEditorLineNumbersExtension(previewLineNumbersFactory, enabled, {
+    domEventHandlers: {},
+  });
+}
+
 watch(
   [previewSettings, editCustomThemes, editActiveCustomThemeId],
   async ([ss]) => {
-    if (!previewView.value || !fontThemeComp || !themeComp || !editorViewModule) return;
+    if (!previewView.value || !fontThemeComp || !themeComp || !previewLineNumbersComp || !editorViewModule) return;
 
     const themeExt = await loadEditorTheme(ss.theme, ss.appAppearance, ss.customColors, ss.appPalette);
     previewView.value.dispatch({
       effects: [
         themeComp.reconfigure(themeExt),
         fontThemeComp.reconfigure(editorFontTheme(editorViewModule.EditorView, ss.fontSize, ss.fontFamily)),
+        previewLineNumbersComp.reconfigure(buildPreviewLineNumbersExtension(ss.showLineNumbers)),
         ...(previewRunGutterComp ? [previewRunGutterComp.reconfigure(buildPreviewRunGutterExtension())] : []),
         ...(currentStatementFrameComp ? [currentStatementFrameComp.reconfigure(buildPreviewCurrentStatementFrameExtension(editorViewModule, ss.showCurrentStatementFrame))] : []),
       ],
@@ -3588,7 +3616,9 @@ function cleanupPreviewEditor() {
   themeComp = null;
   diagnosticComp = null;
   previewRunGutterComp = null;
+  previewLineNumbersComp = null;
   currentStatementFrameComp = null;
+  previewLineNumbersFactory = null;
   setPreviewDiagnosticsEffect = null;
   setPreviewRunHighlightEffect = null;
   editorViewModule = null;
@@ -3613,7 +3643,7 @@ watch(previewRef, async (el) => {
   previewInitialized = true;
   if (previewView.value) return;
 
-  const [{ EditorView, Decoration, ViewPlugin, gutter, GutterMarker, layer, RectangleMarker }, { EditorState, Compartment, StateEffect, StateField }, { sql, MySQL }, { basicSetup }] = await Promise.all([
+  const [{ EditorView, Decoration, ViewPlugin, gutter, GutterMarker, layer, RectangleMarker, lineNumbers, highlightActiveLineGutter }, { EditorState, Compartment, StateEffect, StateField }, { sql, MySQL }, { basicSetup }] = await Promise.all([
     import("@codemirror/view"),
     import("@codemirror/state"),
     import("@codemirror/lang-sql"),
@@ -3627,10 +3657,12 @@ watch(previewRef, async (el) => {
     layer,
     RectangleMarker,
   } as typeof import("@codemirror/view");
+  previewLineNumbersFactory = lineNumbers;
   fontThemeComp = new Compartment();
   themeComp = new Compartment();
   diagnosticComp = new Compartment();
   previewRunGutterComp = new Compartment();
+  previewLineNumbersComp = new Compartment();
   currentStatementFrameComp = new Compartment();
   setPreviewDiagnosticsEffect = StateEffect.define<PreviewSqlDiagnostic[]>();
   setPreviewRunHighlightEffect = StateEffect.define<{
@@ -3641,6 +3673,7 @@ watch(previewRef, async (el) => {
 
   const ss = previewSettings.value;
   const themeExt = await loadEditorTheme(ss.theme, ss.appAppearance, ss.customColors, ss.appPalette);
+  const previewBasicSetup = (basicSetup as readonly import("@codemirror/state").Extension[]).slice(2);
   const diagnosticTheme = EditorView.baseTheme({
     ".cm-settings-preview-sql-error": {
       textDecoration: "underline wavy var(--destructive)",
@@ -3719,7 +3752,9 @@ watch(previewRef, async (el) => {
   const state = EditorState.create({
     doc: currentPreviewSql(),
     extensions: [
-      basicSetup,
+      previewLineNumbersComp.of(buildPreviewLineNumbersExtension(ss.showLineNumbers)),
+      highlightActiveLineGutter(),
+      previewBasicSetup,
       sql({ dialect: MySQL }),
       themeComp.of(themeExt),
       fontThemeComp.of(editorFontTheme(EditorView, ss.fontSize, ss.fontFamily)),
@@ -4008,16 +4043,6 @@ onUnmounted(() => {
 
                 <div class="flex items-center justify-between gap-4 rounded-md border bg-muted/20 px-3 py-2">
                   <div class="space-y-1">
-                    <Label for="editor-auto-close-brackets">{{ t("settings.autoCloseBrackets") }}</Label>
-                    <p class="text-xs text-muted-foreground">
-                      {{ t("settings.autoCloseBracketsDescription") }}
-                    </p>
-                  </div>
-                  <Switch id="editor-auto-close-brackets" v-model="editAutoCloseBrackets" class="mt-0.5" />
-                </div>
-
-                <div class="flex items-center justify-between gap-4 rounded-md border bg-muted/20 px-3 py-2">
-                  <div class="space-y-1">
                     <Label for="regex-max-match-count">{{ t("settings.regexMaxMatchCount") }}</Label>
                     <p class="text-xs text-muted-foreground">{{ t("settings.regexMaxMatchCountDescription") }}</p>
                   </div>
@@ -4031,54 +4056,86 @@ onUnmounted(() => {
                     class="h-7 w-24 px-2 text-xs tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                   />
                 </div>
+              </div>
 
-                <div class="flex items-center justify-between gap-4 rounded-md border bg-muted/20 px-3 py-2">
-                  <div class="space-y-1">
-                    <Label for="editor-insert-space-after-completion">{{ t("settings.insertSpaceAfterCompletion") }}</Label>
-                    <p class="text-xs text-muted-foreground">
-                      {{ t("settings.insertSpaceAfterCompletionDescription") }}
-                    </p>
-                  </div>
-                  <Switch id="editor-insert-space-after-completion" v-model="editInsertSpaceAfterCompletion" class="mt-0.5" />
+              <Separator />
+
+              <div class="space-y-3">
+                <div class="text-sm font-medium text-muted-foreground">
+                  {{ t("settings.sqlCompletionSection") }}
                 </div>
 
-                <div class="flex items-center justify-between gap-4 rounded-md border bg-muted/20 px-3 py-2">
-                  <div class="space-y-1">
-                    <Label for="editor-sort-completion-columns-alphabetically">{{ t("settings.sortCompletionColumnsAlphabetically") }}</Label>
+                <div class="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                  <div class="flex items-center justify-between gap-4 rounded-md border bg-muted/20 px-3 py-2">
+                    <div class="space-y-1">
+                      <Label for="editor-auto-close-brackets">{{ t("settings.autoCloseBrackets") }}</Label>
+                      <p class="text-xs text-muted-foreground">
+                        {{ t("settings.autoCloseBracketsDescription") }}
+                      </p>
+                    </div>
+                    <Switch id="editor-auto-close-brackets" v-model="editAutoCloseBrackets" class="mt-0.5" />
+                  </div>
+
+                  <div class="flex items-center justify-between gap-4 rounded-md border bg-muted/20 px-3 py-2">
+                    <div class="space-y-1">
+                      <Label for="editor-insert-space-after-completion">{{ t("settings.insertSpaceAfterCompletion") }}</Label>
+                      <p class="text-xs text-muted-foreground">
+                        {{ t("settings.insertSpaceAfterCompletionDescription") }}
+                      </p>
+                    </div>
+                    <Switch id="editor-insert-space-after-completion" v-model="editInsertSpaceAfterCompletion" class="mt-0.5" />
+                  </div>
+
+                  <div class="flex items-center justify-between gap-4 rounded-md border bg-muted/20 px-3 py-2">
+                    <div class="space-y-1">
+                      <Label for="editor-sort-completion-columns-alphabetically">{{ t("settings.sortCompletionColumnsAlphabetically") }}</Label>
+                      <p class="text-xs text-muted-foreground">
+                        {{ t("settings.sortCompletionColumnsAlphabeticallyDescription") }}
+                      </p>
+                    </div>
+                    <Switch id="editor-sort-completion-columns-alphabetically" v-model="editSortCompletionColumnsAlphabetically" class="mt-0.5" />
+                  </div>
+
+                  <div class="flex items-center justify-between gap-4 rounded-md border bg-muted/20 px-3 py-2">
+                    <div class="space-y-1">
+                      <Label for="editor-select-first-completion-on-open">{{ t("settings.selectFirstCompletionOnOpen") }}</Label>
+                      <p class="text-xs text-muted-foreground">
+                        {{ t("settings.selectFirstCompletionOnOpenDescription") }}
+                      </p>
+                    </div>
+                    <Switch id="editor-select-first-completion-on-open" v-model="editSelectFirstCompletionOnOpen" class="mt-0.5" />
+                  </div>
+
+                  <div class="flex items-center justify-between gap-4 rounded-md border bg-muted/20 px-3 py-2">
+                    <div class="space-y-1">
+                      <Label for="editor-auto-alias-tables">{{ t("settings.autoAliasTables") }}</Label>
+                      <p class="text-xs text-muted-foreground">
+                        {{ t("settings.autoAliasTablesDescription") }}
+                      </p>
+                    </div>
+                    <Switch id="editor-auto-alias-tables" v-model="editAutoAliasTables" class="mt-0.5" />
+                  </div>
+
+                  <div class="space-y-2">
+                    <Label>{{ t("settings.completionTriggerMode") }}</Label>
+                    <Select :model-value="editCompletionTriggerMode" @update:model-value="onCompletionTriggerModeChange">
+                      <SelectTrigger>
+                        <SelectValue :placeholder="t('settings.completionTriggerMode')" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="manual">{{ t("settings.completionTriggerModeManual") }}</SelectItem>
+                        <SelectItem value="require-prefix">{{ t("settings.completionTriggerModeRequirePrefix") }}</SelectItem>
+                        <SelectItem value="positional">{{ t("settings.completionTriggerModePositional") }}</SelectItem>
+                      </SelectContent>
+                    </Select>
                     <p class="text-xs text-muted-foreground">
-                      {{ t("settings.sortCompletionColumnsAlphabeticallyDescription") }}
+                      {{ t("settings.completionTriggerModeDescription") }}
                     </p>
                   </div>
-                  <Switch id="editor-sort-completion-columns-alphabetically" v-model="editSortCompletionColumnsAlphabetically" class="mt-0.5" />
-                </div>
-
-                <div class="flex items-center justify-between gap-4 rounded-md border bg-muted/20 px-3 py-2">
-                  <div class="space-y-1">
-                    <Label for="editor-auto-alias-tables">{{ t("settings.autoAliasTables") }}</Label>
-                    <p class="text-xs text-muted-foreground">
-                      {{ t("settings.autoAliasTablesDescription") }}
-                    </p>
-                  </div>
-                  <Switch id="editor-auto-alias-tables" v-model="editAutoAliasTables" class="mt-0.5" />
-                </div>
-
-                <div class="space-y-2">
-                  <Label>{{ t("settings.completionTriggerMode") }}</Label>
-                  <Select :model-value="editCompletionTriggerMode" @update:model-value="onCompletionTriggerModeChange">
-                    <SelectTrigger>
-                      <SelectValue :placeholder="t('settings.completionTriggerMode')" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="manual">{{ t("settings.completionTriggerModeManual") }}</SelectItem>
-                      <SelectItem value="require-prefix">{{ t("settings.completionTriggerModeRequirePrefix") }}</SelectItem>
-                      <SelectItem value="positional">{{ t("settings.completionTriggerModePositional") }}</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <p class="text-xs text-muted-foreground">
-                    {{ t("settings.completionTriggerModeDescription") }}
-                  </p>
                 </div>
               </div>
+
+              <Separator />
 
               <div class="grid gap-3 md:grid-cols-2">
                 <div class="flex items-center justify-between gap-4 rounded-md border bg-muted/20 px-3 py-2 md:col-span-2">
@@ -4188,6 +4245,16 @@ onUnmounted(() => {
                     </p>
                   </div>
                   <Switch id="generate-sql-include-database-name" v-model="editGenerateSqlIncludeDatabaseName" class="mt-0.5" />
+                </div>
+
+                <div class="flex items-center justify-between gap-4 rounded-md border bg-muted/20 px-3 py-2">
+                  <div class="space-y-1">
+                    <Label for="format-sql-on-sql-file-save">{{ t("settings.formatSqlOnSqlFileSave") }}</Label>
+                    <p class="text-xs text-muted-foreground">
+                      {{ t("settings.formatSqlOnSqlFileSaveDescription") }}
+                    </p>
+                  </div>
+                  <Switch id="format-sql-on-sql-file-save" v-model="editFormatSqlOnSqlFileSave" class="mt-0.5" />
                 </div>
               </div>
 
@@ -4594,22 +4661,22 @@ onUnmounted(() => {
               <div class="settings-appearance-group">
                 <Label>{{ t("settings.tabLayout") }}</Label>
                 <div class="settings-appearance-choice-grid">
-                  <Button type="button" variant="outline" class="settings-choice-card h-auto justify-start border p-3" :class="editTabLayout === 'scroll' ? 'dbx-choice-selected' : ''" @click="setTabLayout('scroll')">
+                  <Button type="button" variant="outline" class="settings-choice-card h-auto min-w-0 justify-start overflow-hidden whitespace-normal border p-3" :class="editTabLayout === 'scroll' ? 'dbx-choice-selected' : ''" @click="setTabLayout('scroll')">
                     <div class="w-full min-w-0 text-left">
                       <div class="text-sm font-medium">
                         {{ t("settings.tabLayoutScroll") }}
                       </div>
-                      <div class="text-xs text-muted-foreground">
+                      <div class="break-words whitespace-normal text-xs text-muted-foreground">
                         {{ t("settings.tabLayoutScrollDescription") }}
                       </div>
                     </div>
                   </Button>
-                  <Button type="button" variant="outline" class="settings-choice-card h-auto justify-start border p-3" :class="editTabLayout === 'wrap' ? 'dbx-choice-selected' : ''" @click="setTabLayout('wrap')">
+                  <Button type="button" variant="outline" class="settings-choice-card h-auto min-w-0 justify-start overflow-hidden whitespace-normal border p-3" :class="editTabLayout === 'wrap' ? 'dbx-choice-selected' : ''" @click="setTabLayout('wrap')">
                     <div class="w-full min-w-0 text-left">
                       <div class="text-sm font-medium">
                         {{ t("settings.tabLayoutWrap") }}
                       </div>
-                      <div class="text-xs text-muted-foreground">
+                      <div class="break-words whitespace-normal text-xs text-muted-foreground">
                         {{ t("settings.tabLayoutWrapDescription") }}
                       </div>
                     </div>
@@ -4782,10 +4849,10 @@ onUnmounted(() => {
                   </HelpTooltip>
                 </div>
                 <div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                  <Button type="button" variant="outline" class="h-auto items-start justify-start border p-3" :class="editDataTabReuseMode === 'always-new' ? 'dbx-choice-selected' : ''" @click="editDataTabReuseMode = 'always-new'">
-                    <div class="text-left">
-                      <div class="flex items-center gap-2">
-                        <div class="text-sm font-medium">{{ t("settings.dataTabReuseAlwaysNew") }}</div>
+                  <Button type="button" variant="outline" class="settings-choice-card h-auto min-w-0 items-start justify-start overflow-hidden whitespace-normal border p-3" :class="editDataTabReuseMode === 'always-new' ? 'dbx-choice-selected' : ''" @click="editDataTabReuseMode = 'always-new'">
+                    <div class="w-full min-w-0 text-left">
+                      <div class="flex min-w-0 items-center gap-2">
+                        <div class="min-w-0 break-words text-sm font-medium">{{ t("settings.dataTabReuseAlwaysNew") }}</div>
                         <Tooltip :open="dataTabReuseModeHelp === 'always-new'">
                           <TooltipTrigger as-child>
                             <span class="inline-flex shrink-0 cursor-help text-muted-foreground hover:text-foreground" @click.stop @pointerdown.stop @mouseenter="dataTabReuseModeHelp = 'always-new'" @mouseleave="dataTabReuseModeHelp = null">
@@ -4799,10 +4866,10 @@ onUnmounted(() => {
                       </div>
                     </div>
                   </Button>
-                  <Button type="button" variant="outline" class="h-auto items-start justify-start border p-3" :class="editDataTabReuseMode === 'same-table' ? 'dbx-choice-selected' : ''" @click="editDataTabReuseMode = 'same-table'">
-                    <div class="text-left">
-                      <div class="flex items-center gap-2">
-                        <div class="text-sm font-medium">{{ t("settings.dataTabReuseSameTable") }}</div>
+                  <Button type="button" variant="outline" class="settings-choice-card h-auto min-w-0 items-start justify-start overflow-hidden whitespace-normal border p-3" :class="editDataTabReuseMode === 'same-table' ? 'dbx-choice-selected' : ''" @click="editDataTabReuseMode = 'same-table'">
+                    <div class="w-full min-w-0 text-left">
+                      <div class="flex min-w-0 items-center gap-2">
+                        <div class="min-w-0 break-words text-sm font-medium">{{ t("settings.dataTabReuseSameTable") }}</div>
                         <Tooltip :open="dataTabReuseModeHelp === 'same-table'">
                           <TooltipTrigger as-child>
                             <span class="inline-flex shrink-0 cursor-help text-muted-foreground hover:text-foreground" @click.stop @pointerdown.stop @mouseenter="dataTabReuseModeHelp = 'same-table'" @mouseleave="dataTabReuseModeHelp = null">
@@ -4816,10 +4883,10 @@ onUnmounted(() => {
                       </div>
                     </div>
                   </Button>
-                  <Button type="button" variant="outline" class="h-auto items-start justify-start border p-3" :class="editDataTabReuseMode === 'active-tab' ? 'dbx-choice-selected' : ''" @click="editDataTabReuseMode = 'active-tab'">
-                    <div class="text-left">
-                      <div class="flex items-center gap-2">
-                        <div class="text-sm font-medium">{{ t("settings.dataTabReuseActiveTab") }}</div>
+                  <Button type="button" variant="outline" class="settings-choice-card h-auto min-w-0 items-start justify-start overflow-hidden whitespace-normal border p-3" :class="editDataTabReuseMode === 'active-tab' ? 'dbx-choice-selected' : ''" @click="editDataTabReuseMode = 'active-tab'">
+                    <div class="w-full min-w-0 text-left">
+                      <div class="flex min-w-0 items-center gap-2">
+                        <div class="min-w-0 break-words text-sm font-medium">{{ t("settings.dataTabReuseActiveTab") }}</div>
                         <Tooltip :open="dataTabReuseModeHelp === 'active-tab'">
                           <TooltipTrigger as-child>
                             <span class="inline-flex shrink-0 cursor-help text-muted-foreground hover:text-foreground" @click.stop @pointerdown.stop @mouseenter="dataTabReuseModeHelp = 'active-tab'" @mouseleave="dataTabReuseModeHelp = null">
@@ -4895,18 +4962,18 @@ onUnmounted(() => {
                   </HelpTooltip>
                 </div>
                 <div class="grid grid-cols-2 gap-2">
-                  <Button type="button" variant="outline" class="h-auto justify-start border p-3" :class="editRoutineSourceOpenMode === 'query-tab' ? 'dbx-choice-selected' : ''" @click="setRoutineSourceOpenMode('query-tab')">
-                    <div class="text-left">
+                  <Button type="button" variant="outline" class="settings-choice-card h-auto min-w-0 justify-start overflow-hidden whitespace-normal border p-3" :class="editRoutineSourceOpenMode === 'query-tab' ? 'dbx-choice-selected' : ''" @click="setRoutineSourceOpenMode('query-tab')">
+                    <div class="w-full min-w-0 text-left">
                       <div class="text-sm font-medium">{{ t("settings.routineSourceOpenModeQueryTab") }}</div>
-                      <div class="text-xs text-muted-foreground">
+                      <div class="break-words whitespace-normal text-xs text-muted-foreground">
                         {{ t("settings.routineSourceOpenModeQueryTabDescription") }}
                       </div>
                     </div>
                   </Button>
-                  <Button type="button" variant="outline" class="h-auto justify-start border p-3" :class="editRoutineSourceOpenMode === 'dialog' ? 'dbx-choice-selected' : ''" @click="setRoutineSourceOpenMode('dialog')">
-                    <div class="text-left">
+                  <Button type="button" variant="outline" class="settings-choice-card h-auto min-w-0 justify-start overflow-hidden whitespace-normal border p-3" :class="editRoutineSourceOpenMode === 'dialog' ? 'dbx-choice-selected' : ''" @click="setRoutineSourceOpenMode('dialog')">
+                    <div class="w-full min-w-0 text-left">
                       <div class="text-sm font-medium">{{ t("settings.routineSourceOpenModeDialog") }}</div>
-                      <div class="text-xs text-muted-foreground">
+                      <div class="break-words whitespace-normal text-xs text-muted-foreground">
                         {{ t("settings.routineSourceOpenModeDialogDescription") }}
                       </div>
                     </div>
@@ -5445,6 +5512,27 @@ onUnmounted(() => {
                     trigger-variant="outline"
                     trigger-class="h-9 w-full max-w-none justify-between"
                   />
+                </div>
+              </div>
+
+              <Separator />
+
+              <div id="redis-key-templates" class="space-y-3">
+                <div class="text-sm font-medium text-muted-foreground">
+                  {{ t("settings.redisKeyTemplatesSection") }}
+                </div>
+                <div class="space-y-2">
+                  <Label for="redis-key-templates-input">{{ t("settings.redisKeyTemplates") }}</Label>
+                  <textarea
+                    id="redis-key-templates-input"
+                    v-model="editRedisKeyTemplates"
+                    class="dbx-editor-font-family min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-xs outline-none transition-colors placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                    :placeholder="t('settings.redisKeyTemplatesPlaceholder')"
+                    spellcheck="false"
+                  />
+                  <p class="text-xs text-muted-foreground">
+                    {{ t("settings.redisKeyTemplatesDescription") }}
+                  </p>
                 </div>
               </div>
 

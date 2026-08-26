@@ -722,7 +722,7 @@ watch(
 );
 
 watch(
-  () => [props.activeTab.id, props.activeTab.result, props.activeTab.results, props.activeTab.isExecuting] as const,
+  () => [props.activeTab.id, props.activeTab.result, props.activeTab.results, props.activeTab.isExecuting, props.activeOutputView] as const,
   () => {
     if (props.activeTab.isExecuting) return;
     if (hasExecutionSummary.value && !hasTabularResult.value && props.activeOutputView === "result") {
@@ -1122,6 +1122,10 @@ function requestQueryEditorExecuteInNewResultTab() {
   return queryEditorRef.value?.requestExecuteInNewResultTab();
 }
 
+function shouldBlockQueryEditorExecutionShortcut(event: KeyboardEvent) {
+  return queryEditorRef.value?.shouldBlockExecutionShortcut?.(event) ?? false;
+}
+
 function acceptQueryEditorExecutionViewport(requestId: number) {
   return queryEditorRef.value?.acceptGutterExecutionViewport(requestId) ?? false;
 }
@@ -1166,6 +1170,7 @@ defineExpose({
   handleModRTarget,
   requestQueryEditorExecute,
   requestQueryEditorExecuteInNewResultTab,
+  shouldBlockQueryEditorExecutionShortcut,
   acceptQueryEditorExecutionViewport,
   pasteClipboardAsSqlInCondition,
   applyTableStructureChanges,
@@ -2251,7 +2256,7 @@ defineExpose({
     <!-- Document mode: MongoDB collections and Elasticsearch indices -->
     <template v-else-if="activeTab.mode === 'mongo'">
       <div class="flex-1 min-h-0">
-        <DocumentBrowser ref="documentBrowserRef" :key="activeTab.id" :connection-id="activeTab.connectionId" :database="activeTab.database" :collection="activeTab.sql" :database-type="activeEffectiveDatabaseType" :table-meta="activeTab.tableMeta" />
+        <DocumentBrowser ref="documentBrowserRef" :key="`${activeTab.id}:${activeTab.sql}`" :connection-id="activeTab.connectionId" :database="activeTab.database" :collection="activeTab.sql" :database-type="activeEffectiveDatabaseType" :table-meta="activeTab.tableMeta" />
       </div>
     </template>
 
