@@ -1293,6 +1293,7 @@ export default withEnglishFallback({
   tabs: {
     sql: "SQL",
     openInSplitView: "在分屏中查看",
+    openInSplitViewHorizontal: "在上下分屏中查看",
     splitViewViewerBadge: "查看",
     splitViewPromoteToMain: "设为主窗格",
     splitViewClose: "关闭分屏",
@@ -6551,6 +6552,8 @@ export default withEnglishFallback({
     shortcutNewQuery: "新建查询",
     shortcutOpenSettings: "打开设置",
     shortcutCloseTab: "关闭标签页",
+    shortcutSplitTab: "左右分屏查看",
+    shortcutSplitTabHorizontally: "上下分屏查看",
     shortcutToggleSidebar: "切换侧边栏",
     shortcutFocusSearch: "聚焦当前页面搜索",
     shortcutQuickOpen: "快速打开 (搜索所有数据库对象)",

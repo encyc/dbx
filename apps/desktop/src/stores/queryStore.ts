@@ -9,7 +9,7 @@ import { buildExplainSql, parseExplainResult, parseDamengExplainText, parseOracl
 import { mysqlExplainCompatibilityHint } from "@/lib/diagram/mysqlExplainCompatibility";
 import { allEditableColumnsWriteable, allPrimaryKeysPresent, analyzeEditableQueryEditability, analyzeSelectStructureForDisplay, resolveMetadataColumnName, resolveSourceColumnsByOrdinal, sourceColumnsForResult, type EditableQueryInfo, type EditableQuerySource } from "@/lib/sql/sqlAnalysis";
 import { buildQueryWithHiddenPrimaryKeys, hiddenResultColumnIndexes, type HiddenPrimaryKeyProjection } from "@/lib/sql/editableQueryHiddenKeys";
-import { ACTIVE_TAB_STORAGE_KEY, OPEN_TABS_STORAGE_KEY, restoreOpenTabsPayload, restoreOpenTabsState, serializeOpenTabs } from "@/lib/app/openTabsPersistence";
+import { ACTIVE_TAB_STORAGE_KEY, OPEN_TABS_STORAGE_KEY, parseSplitPaneDirection, restoreOpenTabsPayload, restoreOpenTabsState, serializeOpenTabs, type SplitPaneDirection } from "@/lib/app/openTabsPersistence";
 import {
   evaluateMongoAggregateSafety,
   evaluateMongoWriteSafety,
@@ -668,8 +668,8 @@ let saveTabsQueue = Promise.resolve();
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 let persistGeneration = 0;
 
-function saveTabs(tabs: QueryTab[], activeTabId: string | null, splitPaneTabId: string | null): Promise<void> {
-  const payload = { tabs: serializeOpenTabs(tabs), activeTabId, ...(splitPaneTabId ? { splitPaneTabId } : {}) };
+function saveTabs(tabs: QueryTab[], activeTabId: string | null, splitPaneTabId: string | null, splitPaneDirection: SplitPaneDirection): Promise<void> {
+  const payload = { tabs: serializeOpenTabs(tabs), activeTabId, ...(splitPaneTabId ? { splitPaneTabId, splitPaneDirection } : {}) };
   saveTabsQueue = saveTabsQueue.catch(() => undefined).then(() => api.saveOpenTabsState(payload));
   return saveTabsQueue;
 }
@@ -736,6 +736,9 @@ export const useQueryStore = defineStore("query", () => {
   // The tab shown in the side-by-side reference pane, or null when the split
   // view is closed. The main pane keeps rendering activeTabId as before.
   const splitPaneTabId = ref<string | null>(null);
+  // Which side the reference pane occupies: to the right ("vertical") or below
+  // ("horizontal"). Persisted together with splitPaneTabId.
+  const splitPaneDirection = ref<SplitPaneDirection>("vertical");
   const isOpenTabsLoaded = ref(false);
   const activeTabHistory = ref<string[]>([]);
   // Most-recently-activated tab ids, oldest first. Read-only view for the
@@ -1637,7 +1640,7 @@ export const useQueryStore = defineStore("query", () => {
     clearResultPayload(tab, { evicted: true });
   }
 
-  function applyRestoredOpenTabs(restored: { tabs: QueryTab[]; activeTabId: string | null; splitPaneTabId?: string | null }) {
+  function applyRestoredOpenTabs(restored: { tabs: QueryTab[]; activeTabId: string | null; splitPaneTabId?: string | null; splitPaneDirection?: unknown }) {
     const connectionStore = useConnectionStore();
     for (const tab of restored.tabs) {
       const connection = connectionStore.getConfig(tab.connectionId);
@@ -1650,6 +1653,7 @@ export const useQueryStore = defineStore("query", () => {
     tabs.value = restored.tabs;
     activeTabId.value = restored.activeTabId;
     splitPaneTabId.value = restored.splitPaneTabId && restored.tabs.some((tab) => tab.id === restored.splitPaneTabId) ? restored.splitPaneTabId : null;
+    splitPaneDirection.value = parseSplitPaneDirection(restored.splitPaneDirection);
     activeTabHistory.value = restored.activeTabId ? [restored.activeTabId] : [];
     for (const tab of restored.tabs) {
       if (tab.mode === "data") void deleteTabResultSnapshot(tabResultCacheKey(tab.id));
@@ -1676,7 +1680,7 @@ export const useQueryStore = defineStore("query", () => {
         // Restore is explicitly disabled, so stale saved payloads should not
         // reappear if the user later changes the setting.
         clearLegacySavedTabs();
-        await saveTabs(tabs.value, activeTabId.value, splitPaneTabId.value).catch(() => undefined);
+        await saveTabs(tabs.value, activeTabId.value, splitPaneTabId.value, splitPaneDirection.value).catch(() => undefined);
       }
       isOpenTabsLoaded.value = true;
       scheduleResultCacheMaintenance();
@@ -1696,7 +1700,7 @@ export const useQueryStore = defineStore("query", () => {
         return;
       }
       try {
-        await saveTabs(tabs.value, activeTabId.value, splitPaneTabId.value);
+        await saveTabs(tabs.value, activeTabId.value, splitPaneTabId.value, splitPaneDirection.value);
         // Keep old desktop installs readable until the async store has the
         // migrated state; only then remove the synchronous startup payload.
         clearLegacySavedTabs();
@@ -1767,7 +1771,7 @@ export const useQueryStore = defineStore("query", () => {
       if (storePersistGeneration !== persistGeneration) return;
       if (persistTimer) clearTimeout(persistTimer);
       persistTimer = setTimeout(() => {
-        void saveTabs(tabs.value, activeTabId.value, splitPaneTabId.value).catch(() => {});
+        void saveTabs(tabs.value, activeTabId.value, splitPaneTabId.value, splitPaneDirection.value).catch(() => {});
         persistTimer = null;
       }, 300);
     },
@@ -1800,7 +1804,7 @@ export const useQueryStore = defineStore("query", () => {
       clearTimeout(persistTimer);
       persistTimer = null;
     }
-    return saveTabs(tabs.value, activeTabId.value, splitPaneTabId.value);
+    return saveTabs(tabs.value, activeTabId.value, splitPaneTabId.value, splitPaneDirection.value);
   }
 
   function findTabByIdentity(connectionId: string, database: string, title: string, mode: QueryTab["mode"], schema?: string, catalog?: string) {
@@ -2036,15 +2040,20 @@ export const useQueryStore = defineStore("query", () => {
     if (typeof window !== "undefined") window.dispatchEvent(new Event(QUERY_SURFACE_ACTIVATION_EVENT));
   }
 
-  function openTabInSplitPane(tabId: string) {
+  function openTabInSplitPane(tabId: string, direction: SplitPaneDirection = "vertical") {
     if (tabId === activeTabId.value) return;
     if (!tabs.value.some((tab) => tab.id === tabId)) return;
     splitPaneTabId.value = tabId;
+    splitPaneDirection.value = direction;
     touchResult(
       tabs.value.find((tab) => tab.id === tabId),
       Date.now(),
       { reuseEstimatedBytes: true },
     );
+  }
+
+  function setSplitPaneDirection(direction: SplitPaneDirection) {
+    splitPaneDirection.value = direction;
   }
 
   function closeSplitPane() {
@@ -6700,7 +6709,9 @@ export const useQueryStore = defineStore("query", () => {
     showExecutedQueryResults,
     switchTab,
     splitPaneTabId,
+    splitPaneDirection,
     openTabInSplitPane,
+    setSplitPaneDirection,
     closeSplitPane,
     closeTab,
     forceClosePendingTab,

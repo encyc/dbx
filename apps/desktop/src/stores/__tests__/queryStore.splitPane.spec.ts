@@ -67,6 +67,21 @@ describe("queryStore split reference pane", () => {
     expect(queryStore.tabs).toHaveLength(2);
   });
 
+  it("defaults the split direction to side-by-side and switches it on demand", async () => {
+    const queryStore = await createStore();
+    const firstId = queryStore.createTab("conn-1", "db");
+    const secondId = queryStore.createTab("conn-1", "db");
+
+    queryStore.openTabInSplitPane(firstId);
+    expect(queryStore.splitPaneDirection).toBe("vertical");
+
+    queryStore.setSplitPaneDirection("horizontal");
+    expect(queryStore.splitPaneDirection).toBe("horizontal");
+
+    queryStore.openTabInSplitPane(firstId, "horizontal");
+    expect(queryStore.splitPaneDirection).toBe("horizontal");
+  });
+
   it("ignores split pane requests for the active tab", async () => {
     const queryStore = await createStore();
     const tabId = queryStore.createTab("conn-1", "db");
@@ -105,16 +120,18 @@ describe("queryStore split reference pane", () => {
     const queryStore = await createStore();
     const firstId = queryStore.createTab("conn-1", "db");
     const secondId = queryStore.createTab("conn-1", "db");
-    queryStore.openTabInSplitPane(firstId);
+    queryStore.openTabInSplitPane(firstId, "horizontal");
 
     await queryStore.flushPendingPersist();
     const withSplit = mocks.saveOpenTabsState.mock.calls.at(-1)?.[0];
     expect(withSplit.splitPaneTabId).toBe(firstId);
+    expect(withSplit.splitPaneDirection).toBe("horizontal");
 
     queryStore.closeSplitPane();
     await queryStore.flushPendingPersist();
     const withoutSplit = mocks.saveOpenTabsState.mock.calls.at(-1)?.[0];
     expect(withoutSplit.splitPaneTabId).toBeUndefined();
+    expect(withoutSplit.splitPaneDirection).toBeUndefined();
   });
 
   it("restores the split pane tab from the saved state", async () => {
@@ -125,13 +142,33 @@ describe("queryStore split reference pane", () => {
       ],
       activeTabId: "tab-a",
       splitPaneTabId: "tab-b",
+      splitPaneDirection: "horizontal",
     });
     const queryStore = await createStore();
 
     await queryStore.initOpenTabs();
 
     expect(queryStore.splitPaneTabId).toBe("tab-b");
+    expect(queryStore.splitPaneDirection).toBe("horizontal");
     expect(queryStore.activeTabId).toBe("tab-a");
+  });
+
+  it("falls back to the side-by-side direction for legacy saved state", async () => {
+    mocks.loadOpenTabsState.mockResolvedValue({
+      tabs: [
+        { id: "tab-a", title: "Query 1", connectionId: "conn-1", database: "db", sql: "select 1;", mode: "query" },
+        { id: "tab-b", title: "Query 2", connectionId: "conn-1", database: "db", sql: "select 2;", mode: "query" },
+      ],
+      activeTabId: "tab-a",
+      splitPaneTabId: "tab-b",
+      splitPaneDirection: "diagonal",
+    });
+    const queryStore = await createStore();
+
+    await queryStore.initOpenTabs();
+
+    expect(queryStore.splitPaneTabId).toBe("tab-b");
+    expect(queryStore.splitPaneDirection).toBe("vertical");
   });
 
   it("drops a stale split pane tab id on restore", async () => {

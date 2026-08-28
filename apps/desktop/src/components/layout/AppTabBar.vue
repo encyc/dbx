@@ -2,7 +2,7 @@
 import { computed, ref, watch, nextTick, onUnmounted } from "vue";
 import type { CSSProperties } from "vue";
 import { useI18n } from "vue-i18n";
-import { X, Pin, ChevronDown, Search, Table2, Code2, TableProperties, PencilRuler, KeyRound, Pencil, Package, Lock, Copy, AlertTriangle, Network, Minimize2, Maximize2, Settings, CalendarClock, Activity, Gauge, ShieldCheck, Database, GitBranch, Crosshair, Columns2 } from "@lucide/vue";
+import { X, Pin, ChevronDown, Search, Table2, Code2, TableProperties, PencilRuler, KeyRound, Pencil, Package, Lock, Copy, AlertTriangle, Network, Minimize2, Maximize2, Settings, CalendarClock, Activity, Gauge, ShieldCheck, Database, GitBranch, Crosshair, Columns2, Rows2 } from "@lucide/vue";
 import CustomContextMenu, { type ContextMenuItem } from "@/components/ui/CustomContextMenu.vue";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -43,7 +43,7 @@ const emit = defineEmits<{
   "save-all-tab-close": [];
   "discard-all-tab-close": [];
   "cancel-tab-close": [];
-  "open-in-split-view": [tabId: string];
+  "open-in-split-view": [tabId: string, direction: "vertical" | "horizontal"];
 }>();
 
 const { t } = useI18n();
@@ -312,8 +312,14 @@ function getTabMenuItems(tab: QueryTab): ContextMenuItem[] {
     },
     {
       label: t("tabs.openInSplitView"),
-      action: () => emit("open-in-split-view", tab.id),
+      action: () => emit("open-in-split-view", tab.id, "vertical"),
       icon: Columns2,
+      disabled: tab.id === queryStore.activeTabId || tab.id === queryStore.splitPaneTabId,
+    },
+    {
+      label: t("tabs.openInSplitViewHorizontal"),
+      action: () => emit("open-in-split-view", tab.id, "horizontal"),
+      icon: Rows2,
       disabled: tab.id === queryStore.activeTabId || tab.id === queryStore.splitPaneTabId,
     },
     {

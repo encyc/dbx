@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick, defineAsyncComponent } from "vue";
 import { useI18n } from "vue-i18n";
-import { ChevronsRight, FileText, PanelLeft, X } from "@lucide/vue";
+import { ChevronsRight, FileText, PanelLeft, PanelTop, X } from "@lucide/vue";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import AppToolbar from "@/components/layout/AppToolbar.vue";
 import AppTabBar from "@/components/layout/AppTabBar.vue";
@@ -71,6 +71,8 @@ import {
   isBrowserReloadShortcut,
   isCloseOtherTabsShortcut,
   isCloseTabShortcut,
+  isSplitTabShortcut,
+  isSplitTabHorizontallyShortcut,
   isExecuteSqlInNewResultTabShortcut,
   isExecuteSqlShortcut,
   isFocusSearchShortcut,
@@ -344,7 +346,9 @@ const splitPaneSelectedSql = ref("");
 const splitPaneCursorPos = ref(0);
 const splitPaneOutputView = ref<"result" | "summary" | "explain" | "chart" | "messages">("result");
 const splitPaneRowEl = ref<HTMLElement | null>(null);
-const { widthPercent: splitPaneWidthPercent, isResizing: isSplitPaneResizing, beginResize: beginSplitPaneResize } = usePaneResize("dbx-split-pane-width");
+const splitPaneIsHorizontal = computed(() => queryStore.splitPaneDirection === "horizontal");
+const { sizePercent: splitPaneWidthPercent, isResizing: isSplitPaneResizing, beginResize: beginSplitPaneColumnResize } = usePaneResize("dbx-split-pane-width", "x");
+const { sizePercent: splitPaneHeightPercent, isResizing: isSplitPaneRowResizing, beginResize: beginSplitPaneRowResize } = usePaneResize("dbx-split-pane-height", "y");
 
 watch(
   () => queryStore.splitPaneTabId,
@@ -360,6 +364,28 @@ function promoteSplitPaneTabToMain() {
   if (!tabId) return;
   queryStore.closeSplitPane();
   queryStore.switchTab(tabId);
+}
+
+// The shortcut needs no explicit target: fall back to the most recently used
+// tab that is neither the active nor the split tab, then to tab order.
+function pickSplitPaneCandidateTabId(): string | null {
+  const excluded = new Set([queryStore.activeTabId, queryStore.splitPaneTabId].filter((id): id is string => !!id));
+  const recent = queryStore.recentTabIds.find((id) => !excluded.has(id) && queryStore.tabs.some((tab) => tab.id === id));
+  if (recent) return recent;
+  return queryStore.tabs.find((tab) => !excluded.has(tab.id))?.id ?? null;
+}
+
+function toggleSplitPane(direction: "vertical" | "horizontal"): boolean {
+  if (!activeTab.value) return false;
+  if (queryStore.splitPaneTabId) {
+    if (queryStore.splitPaneDirection === direction) queryStore.closeSplitPane();
+    else queryStore.setSplitPaneDirection(direction);
+    return true;
+  }
+  const candidateId = pickSplitPaneCandidateTabId();
+  if (!candidateId) return false;
+  queryStore.openTabInSplitPane(candidateId, direction);
+  return true;
 }
 
 function updateAgentDriverUpdateCount(count: number) {
@@ -2629,6 +2655,20 @@ async function handleKeydown(e: KeyboardEvent) {
     }
     return;
   }
+  if (isSplitTabShortcut(e, shortcuts)) {
+    if (toggleSplitPane("vertical")) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    return;
+  }
+  if (isSplitTabHorizontallyShortcut(e, shortcuts)) {
+    if (toggleSplitPane("horizontal")) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    return;
+  }
   if (isCloseOtherTabsShortcut(e, shortcuts)) {
     e.preventDefault();
     e.stopPropagation();
@@ -2996,7 +3036,7 @@ onUnmounted(() => {
                 @activate-settings-page="activateSettingsPage"
                 @locate-tab="locateTabInSidebar"
                 @activate-tab="activateQuerySurface"
-                @open-in-split-view="(tabId: string) => queryStore.openTabInSplitPane(tabId)"
+                @open-in-split-view="(tabId: string, direction: 'vertical' | 'horizontal') => queryStore.openTabInSplitPane(tabId, direction)"
                 @close-driver-store="closeDriverStorePage"
                 @close-settings-page="closeSettingsPage"
                 @save-tab="handleSaveTab"
@@ -3022,7 +3062,7 @@ onUnmounted(() => {
                 @update:open="(open: boolean) => (open ? activateSettingsPage() : closeSettingsPage())"
                 @check-updates="checkUpdates()"
               />
-              <div v-if="activeTab" v-show="!driverStoreActive && !settingsStore.settingsPageActive" ref="splitPaneRowEl" class="flex flex-1 min-h-0 min-w-0">
+              <div v-if="activeTab" v-show="!driverStoreActive && !settingsStore.settingsPageActive" ref="splitPaneRowEl" class="flex flex-1 min-h-0 min-w-0" :class="{ 'flex-col': splitPaneIsHorizontal }">
                 <div class="flex flex-col flex-1 min-h-0 min-w-0">
                   <EditorToolbar
                     v-if="activeTab.mode === 'query' && !isPreviewTab(activeTab)"
@@ -3137,14 +3177,16 @@ onUnmounted(() => {
                   </KeepAlive>
                 </div>
                 <template v-if="splitPaneTab">
-                  <div class="w-1 shrink-0 cursor-col-resize bg-border transition-colors hover:bg-primary/60" :class="{ 'bg-primary': isSplitPaneResizing }" :aria-label="t('tabs.splitViewResizeHandle')" @pointerdown="beginSplitPaneResize(splitPaneRowEl)" />
-                  <div class="flex min-h-0 shrink-0 flex-col" :style="{ width: `${splitPaneWidthPercent}%` }">
+                  <div v-if="splitPaneIsHorizontal" class="h-1 shrink-0 cursor-row-resize bg-border transition-colors hover:bg-primary/60" :class="{ 'bg-primary': isSplitPaneRowResizing }" :aria-label="t('tabs.splitViewResizeHandle')" @pointerdown="beginSplitPaneRowResize(splitPaneRowEl)" />
+                  <div v-else class="w-1 shrink-0 cursor-col-resize bg-border transition-colors hover:bg-primary/60" :class="{ 'bg-primary': isSplitPaneResizing }" :aria-label="t('tabs.splitViewResizeHandle')" @pointerdown="beginSplitPaneColumnResize(splitPaneRowEl)" />
+                  <div class="flex min-h-0 min-w-0 shrink-0 flex-col" :style="splitPaneIsHorizontal ? { height: `${splitPaneHeightPercent}%` } : { width: `${splitPaneWidthPercent}%` }">
                     <div class="flex h-8 shrink-0 items-center gap-1.5 border-b border-border bg-muted/30 px-2">
                       <span class="h-1.5 w-1.5 shrink-0 rounded-full" :class="queryStore.isTabDirty(splitPaneTab) ? 'bg-primary' : 'bg-transparent'" />
                       <span class="min-w-0 flex-1 truncate text-xs text-muted-foreground" :title="splitPaneTab.title">{{ splitPaneTab.title }}</span>
                       <span class="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground">{{ t("tabs.splitViewViewerBadge") }}</span>
                       <Button variant="ghost" size="icon" class="h-6 w-6" :title="t('tabs.splitViewPromoteToMain')" :aria-label="t('tabs.splitViewPromoteToMain')" @click="promoteSplitPaneTabToMain()">
-                        <PanelLeft class="h-3.5 w-3.5" />
+                        <PanelTop v-if="splitPaneIsHorizontal" class="h-3.5 w-3.5" />
+                        <PanelLeft v-else class="h-3.5 w-3.5" />
                       </Button>
                       <Button variant="ghost" size="icon" class="h-6 w-6" :title="t('tabs.splitViewClose')" :aria-label="t('tabs.splitViewClose')" @click="queryStore.closeSplitPane()">
                         <X class="h-3.5 w-3.5" />

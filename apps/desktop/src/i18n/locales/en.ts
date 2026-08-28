@@ -1369,6 +1369,7 @@ export default {
   tabs: {
     sql: "SQL",
     openInSplitView: "Open in split view",
+    openInSplitViewHorizontal: "Open in split view (top/bottom)",
     splitViewViewerBadge: "View",
     splitViewPromoteToMain: "Set as main pane",
     splitViewClose: "Close split view",
@@ -6565,6 +6566,8 @@ export default {
     shortcutNewQuery: "New query",
     shortcutOpenSettings: "Open settings",
     shortcutCloseTab: "Close tab",
+    shortcutSplitTab: "Split view (side by side)",
+    shortcutSplitTabHorizontally: "Split view (top and bottom)",
     shortcutFocusSearch: "Focus current view search",
     shortcutQuickOpen: "Quick open (search all database objects)",
     shortcutNavigateTabHistoryBack: "Go back to the previously viewed tab",

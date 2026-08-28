@@ -1252,6 +1252,7 @@ export default withEnglishFallback({
   tabs: {
     sql: "SQL",
     openInSplitView: "분할 보기로 열기",
+    openInSplitViewHorizontal: "위/아래 분할 보기로 열기",
     splitViewViewerBadge: "보기",
     splitViewPromoteToMain: "기본 창으로 설정",
     splitViewClose: "분할 보기 닫기",
@@ -5947,6 +5948,8 @@ export default withEnglishFallback({
     shortcutNewQuery: "새 쿼리",
     shortcutOpenSettings: "설정 열기",
     shortcutCloseTab: "탭 닫기",
+    shortcutSplitTab: "좌우 분할 보기",
+    shortcutSplitTabHorizontally: "위/아래 분할 보기",
     shortcutFocusSearch: "현재 화면 검색에 포커스",
     shortcutQuickOpen: "빠른 열기 (모든 데이터베이스 객체 검색)",
     shortcutNavigateTabHistoryBack: "이전에 본 탭으로 돌아가기",

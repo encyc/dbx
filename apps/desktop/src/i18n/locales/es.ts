@@ -1351,6 +1351,7 @@ export default withEnglishFallback({
   tabs: {
     sql: "SQL",
     openInSplitView: "Abrir en vista dividida",
+    openInSplitViewHorizontal: "Abrir en vista dividida superior/inferior",
     splitViewViewerBadge: "Vista",
     splitViewPromoteToMain: "Establecer como panel principal",
     splitViewClose: "Cerrar vista dividida",
@@ -6236,6 +6237,8 @@ export default withEnglishFallback({
     shortcutNewQuery: "Nueva consulta",
     shortcutOpenSettings: "Abrir configuración",
     shortcutCloseTab: "Cerrar pestaña",
+    shortcutSplitTab: "Vista dividida (izquierda/derecha)",
+    shortcutSplitTabHorizontally: "Vista dividida (arriba/abajo)",
     shortcutToggleSidebar: "Alternar barra lateral",
     shortcutFocusSearch: "Enfocar búsqueda de la vista actual",
     shortcutQuickOpen: "Abrir rápido (buscar todos los objetos de base de datos)",
