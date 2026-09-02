@@ -24,6 +24,7 @@ export interface SavedQueryResultRun {
 
 export interface SavedOpenTab {
   id: string;
+  createdAt?: number;
   title: string;
   customTitle?: boolean;
   connectionId: string;
@@ -104,6 +105,7 @@ function restoredOriginalSql(tab: SavedOpenTab, mode: QueryTab["mode"], sql: str
 export function serializeOpenTabs(tabs: QueryTab[]): SavedOpenTab[] {
   return tabs.map((tab) => ({
     id: tab.id,
+    ...(typeof tab.createdAt === "number" ? { createdAt: tab.createdAt } : {}),
     title: tab.title,
     ...(tab.customTitle ? { customTitle: true } : {}),
     connectionId: tab.connectionId,
@@ -201,6 +203,7 @@ function restoreOpenTabsArray(parsed: unknown, rawActiveTabId: string | null, ra
         isExecuting: false,
         isCancelling: false,
         queryExecutionStartedAt: undefined,
+        executingResultRunId: undefined,
         editorViewport: undefined,
         editorSelection: undefined,
         isExplaining: false,

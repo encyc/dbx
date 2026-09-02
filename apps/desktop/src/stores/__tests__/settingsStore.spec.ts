@@ -1,10 +1,28 @@
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { isProxy } from "vue";
-import { DEFAULT_EDITOR_SETTINGS, EXECUTE_MODE_CURRENT_DEFAULT_VERSION, enforceRightSidebarPanelExclusivity, normalizeAiConfig, normalizeDesktopSettings, normalizeEditorSettings, normalizeMcpGlobalPolicy, type RightSidebarPanelState, transitionRightSidebarPanels } from "@/stores/settingsStore";
+import {
+  AI_PROVIDER_PRESETS,
+  DEFAULT_EDITOR_SETTINGS,
+  EXECUTE_MODE_CURRENT_DEFAULT_VERSION,
+  enforceRightSidebarPanelExclusivity,
+  normalizeAiConfig,
+  normalizeDesktopSettings,
+  normalizeEditorSettings,
+  normalizeMcpGlobalPolicy,
+  type RightSidebarPanelState,
+  transitionRightSidebarPanels,
+} from "@/stores/settingsStore";
 import type { AiConfigItem } from "@/types/ai";
 
 describe("normalizeEditorSettings", () => {
+  it("keeps automatic DDL refresh disabled unless explicitly enabled", () => {
+    expect(normalizeEditorSettings({}).refreshDdlOnOpen).toBe(false);
+    expect(normalizeEditorSettings({ refreshDdlOnOpen: true }).refreshDdlOnOpen).toBe(true);
+    expect(normalizeEditorSettings({ refreshDdlOnOpen: false }).refreshDdlOnOpen).toBe(false);
+    expect(normalizeEditorSettings({ refreshDdlOnOpen: "true" } as any).refreshDdlOnOpen).toBe(false);
+  });
+
   it("enables SQL variable substitution by default and only preserves booleans", () => {
     expect(normalizeEditorSettings({}).sqlVariableSubstitutionEnabled).toBe(true);
     expect(normalizeEditorSettings({ sqlVariableSubstitutionEnabled: true }).sqlVariableSubstitutionEnabled).toBe(true);
@@ -132,11 +150,11 @@ describe("normalizeEditorSettings", () => {
     expect(normalizeEditorSettings({ insertSpaceAfterCompletion: false }).insertSpaceAfterCompletion).toBe(false);
   });
 
-  it("keeps non-intrusive completion selection as the default", () => {
-    expect(normalizeEditorSettings({}).selectFirstCompletionOnOpen).toBe(false);
+  it("selects the first completion candidate by default and preserves the opt-out", () => {
+    expect(normalizeEditorSettings({}).selectFirstCompletionOnOpen).toBe(true);
     expect(normalizeEditorSettings({ selectFirstCompletionOnOpen: true }).selectFirstCompletionOnOpen).toBe(true);
     expect(normalizeEditorSettings({ selectFirstCompletionOnOpen: false }).selectFirstCompletionOnOpen).toBe(false);
-    expect(normalizeEditorSettings({ selectFirstCompletionOnOpen: "true" } as any).selectFirstCompletionOnOpen).toBe(false);
+    expect(normalizeEditorSettings({ selectFirstCompletionOnOpen: "true" } as any).selectFirstCompletionOnOpen).toBe(true);
   });
 
   it("defaults sidebar connection sorting to manual order and preserves valid alphabetical modes", () => {
@@ -182,6 +200,12 @@ describe("normalizeEditorSettings", () => {
   it("migrates legacy SQL semantic diagnostics booleans to explicit modes", () => {
     expect(normalizeEditorSettings({ sqlSemanticDiagnosticsEnabled: true } as any).sqlSemanticDiagnosticsMode).toBe("enabled");
     expect(normalizeEditorSettings({ sqlSemanticDiagnosticsEnabled: false } as any).sqlSemanticDiagnosticsMode).toBe("disabled");
+  });
+
+  it("defaults the transaction commit mode to auto and preserves manual", () => {
+    expect(normalizeEditorSettings({}).defaultTransactionMode).toBe("auto");
+    expect(normalizeEditorSettings({ defaultTransactionMode: "manual" }).defaultTransactionMode).toBe("manual");
+    expect(normalizeEditorSettings({ defaultTransactionMode: "bogus" } as any).defaultTransactionMode).toBe("auto");
   });
 
   it("defaults update downloads to the official source", () => {
@@ -270,6 +294,12 @@ describe("normalizeEditorSettings", () => {
     expect(normalizeEditorSettings({ resultRunDisplayMode: "invalid" as any }).resultRunDisplayMode).toBe("tabs");
   });
 
+  it("defaults multi-statement execution to the result table and preserves the summary option", () => {
+    expect(normalizeEditorSettings({}).multiStatementDefaultView).toBe("result");
+    expect(normalizeEditorSettings({ multiStatementDefaultView: "summary" }).multiStatementDefaultView).toBe("summary");
+    expect(normalizeEditorSettings({ multiStatementDefaultView: "invalid" as any }).multiStatementDefaultView).toBe("result");
+  });
+
   it("defaults persistent data grid view options off and preserves enabled values", () => {
     const defaults = normalizeEditorSettings({});
     expect(defaults.dataGridMultiRowTranspose).toBe(false);
@@ -302,6 +332,16 @@ describe("normalizeEditorSettings", () => {
 
     for (const invalidValue of [0, 1, "false", null]) {
       expect(normalizeEditorSettings({ dataGridCellDetailButtonVisible: invalidValue as never }).dataGridCellDetailButtonVisible).toBe(true);
+    }
+  });
+
+  it("defaults the crosshair highlight off and preserves only boolean values", () => {
+    expect(normalizeEditorSettings({}).dataGridCrosshairHighlight).toBe(false);
+    expect(normalizeEditorSettings({ dataGridCrosshairHighlight: true }).dataGridCrosshairHighlight).toBe(true);
+    expect(normalizeEditorSettings({ dataGridCrosshairHighlight: false }).dataGridCrosshairHighlight).toBe(false);
+
+    for (const invalidValue of [0, 1, "true", null]) {
+      expect(normalizeEditorSettings({ dataGridCrosshairHighlight: invalidValue as never }).dataGridCrosshairHighlight).toBe(false);
     }
   });
 
@@ -410,7 +450,10 @@ describe("normalizeMcpGlobalPolicy", () => {
       readOnly: false,
       allowDangerousSql: false,
       allowedConnectionIds: null,
+      allowedToolNames: null,
+      connectionPolicies: [],
       configured: false,
+      queryTimeoutSecs: null,
     });
   });
 
@@ -426,12 +469,22 @@ describe("normalizeMcpGlobalPolicy", () => {
       readOnly: true,
       allowDangerousSql: true,
       allowedConnectionIds: ["connection-1", "connection-2"],
+      allowedToolNames: null,
+      connectionPolicies: [],
       configured: true,
+      queryTimeoutSecs: null,
     });
   });
 
   it("preserves an empty allowlist as deny all", () => {
     expect(normalizeMcpGlobalPolicy({ allowedConnectionIds: [] }).allowedConnectionIds).toEqual([]);
+  });
+
+  it("round-trips queryTimeoutSecs null, undefined and positive numbers", () => {
+    expect(normalizeMcpGlobalPolicy({ queryTimeoutSecs: null }).queryTimeoutSecs).toBeNull();
+    expect(normalizeMcpGlobalPolicy({ queryTimeoutSecs: undefined } as any).queryTimeoutSecs).toBeNull();
+    expect(normalizeMcpGlobalPolicy({ queryTimeoutSecs: 0 }).queryTimeoutSecs).toBe(0);
+    expect(normalizeMcpGlobalPolicy({ queryTimeoutSecs: 300 }).queryTimeoutSecs).toBe(300);
   });
 });
 
@@ -468,6 +521,15 @@ describe("normalizeEditorSettings - clickTableNavigationTarget", () => {
     expect(normalizeEditorSettings({ clickTableNavigationTarget: undefined } as any).clickTableNavigationTarget).toBe("data");
     expect(normalizeEditorSettings({ clickTableNavigationTarget: null } as any).clickTableNavigationTarget).toBe("data");
     expect(normalizeEditorSettings({ clickTableNavigationTarget: 123 } as any).clickTableNavigationTarget).toBe("data");
+  });
+});
+
+describe("normalizeEditorSettings - showTableDdlHoverPreview", () => {
+  it("keeps table DDL hover previews enabled unless explicitly disabled", () => {
+    expect(normalizeEditorSettings({}).showTableDdlHoverPreview).toBe(true);
+    expect(normalizeEditorSettings({ showTableDdlHoverPreview: false }).showTableDdlHoverPreview).toBe(false);
+    expect(normalizeEditorSettings({ showTableDdlHoverPreview: true }).showTableDdlHoverPreview).toBe(true);
+    expect(normalizeEditorSettings({ showTableDdlHoverPreview: "true" } as any).showTableDdlHoverPreview).toBe(true);
   });
 });
 
@@ -557,6 +619,17 @@ describe("settingsStore AI API key normalization", () => {
     expect(normalizeAiConfig({ provider: "openai", apiKey: "  secret  " }).apiKey).toBe("secret");
   });
 
+  it("provides Kimi defaults and recognizes legacy Kimi configurations", () => {
+    expect(AI_PROVIDER_PRESETS.kimi).toMatchObject({
+      provider: "kimi",
+      endpoint: "https://api.moonshot.cn/v1",
+      apiStyle: "completions",
+      authMethod: "bearer",
+      requiresApiKey: true,
+    });
+    expect(normalizeAiConfig({ endpoint: "https://api.moonshot.cn/v1", model: "kimi-k2.5" }).provider).toBe("kimi");
+  });
+
   it("normalizes OpenCode CLI path and environment settings", () => {
     expect(
       normalizeAiConfig({
@@ -644,7 +717,10 @@ describe("settingsStore MCP policy persistence", () => {
       readOnly: true,
       allowDangerousSql: false,
       allowedConnectionIds: ["connection-1"],
+      allowedToolNames: null,
+      connectionPolicies: [],
       configured: true,
+      queryTimeoutSecs: null,
     };
     store.mcpGlobalPolicy = previous;
 
@@ -656,7 +732,10 @@ describe("settingsStore MCP policy persistence", () => {
       readOnly: false,
       allowDangerousSql: false,
       allowedConnectionIds: [],
+      allowedToolNames: null,
+      connectionPolicies: [],
       configured: true,
+      queryTimeoutSecs: null,
     });
 
     rejectSave(new Error("save failed"));
@@ -778,6 +857,29 @@ describe("settingsStore persisted settings initialization", () => {
     const restartedStore = useSettingsStore();
     await restartedStore.initEditorSettings();
     expect(restartedStore.editorSettings.dataGridCellDetailButtonVisible).toBe(true);
+  });
+
+  it("defaults the crosshair highlight to off, persists an opt-in, and reloads it", async () => {
+    let persistedSettings: Record<string, unknown> = {};
+    const loadEditorSettings = vi.fn(async () => JSON.parse(JSON.stringify(persistedSettings)));
+    const saveEditorSettings = vi.fn(async (settings: Record<string, unknown>) => {
+      persistedSettings = JSON.parse(JSON.stringify(settings));
+    });
+    vi.doMock("@/lib/backend/api", () => ({ loadEditorSettings, saveEditorSettings }));
+
+    const { useSettingsStore } = await import("@/stores/settingsStore");
+    const store = useSettingsStore();
+    await store.initEditorSettings();
+
+    expect(store.editorSettings.dataGridCrosshairHighlight).toBe(false);
+
+    await store.updateEditorSettingsAndPersist({ dataGridCrosshairHighlight: true });
+    expect(saveEditorSettings).toHaveBeenLastCalledWith(expect.objectContaining({ dataGridCrosshairHighlight: true }));
+
+    setActivePinia(createPinia());
+    const restartedStore = useSettingsStore();
+    await restartedStore.initEditorSettings();
+    expect(restartedStore.editorSettings.dataGridCrosshairHighlight).toBe(true);
   });
 
   it("loads, persists, and reloads hidden query editor line numbers", async () => {
@@ -1341,6 +1443,24 @@ describe("settingsStore activeModel lifecycle", () => {
     expect(saveAiConfigItem).toHaveBeenCalledWith(expect.objectContaining({ id: "c1", provider: "gemini" }));
     expect(store.activeModel).toBeNull();
     expect(store.activeEffort).toBeNull();
+  });
+
+  it("deletes the active default config and clears the active selection when it was the last config", async () => {
+    const deleteAiConfig = vi.fn().mockResolvedValue(undefined);
+    const saveAiChatSelection = vi.fn().mockResolvedValue(undefined);
+    vi.doMock("@/lib/backend/api", () => ({ deleteAiConfig, saveAiChatSelection }));
+
+    const { useSettingsStore } = await import("@/stores/settingsStore");
+    const store = useSettingsStore();
+    store.aiConfigs = [makeTestConfig({ id: "c1", model: "model-a", isDefault: true })];
+    store.updateActiveModel({ configId: "c1", modelId: "model-a" });
+
+    await store.deleteAiConfig("c1");
+
+    expect(deleteAiConfig).toHaveBeenCalledWith("c1");
+    expect(store.aiConfigs).toEqual([]);
+    expect(store.activeModel).toBeNull();
+    await vi.waitFor(() => expect(saveAiChatSelection).toHaveBeenCalledWith(expect.objectContaining({ active: undefined })));
   });
 
   it("preserves the active model and effort when connection details change within the same provider", async () => {

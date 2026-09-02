@@ -35,6 +35,11 @@ fn quotes_identifiers_by_database_type() {
     assert_eq!(quote_table_identifier(Some(DatabaseType::Jdbc), "user name"), "user name");
     assert_eq!(quote_table_identifier(Some(DatabaseType::Iotdb), "root.test.device2"), "root.test.device2");
     assert_eq!(quote_table_identifier(Some(DatabaseType::Spanner), "user`name"), "`user``name`");
+    // ArgoDB shares the Hive-family dialect: backticks quote identifiers and
+    // double quotes are string literals, and schemas qualify table names.
+    assert_eq!(quote_table_identifier(Some(DatabaseType::Argo), "user`name"), "`user``name`");
+    assert_eq!(quote_transfer_identifier("user`name", &DatabaseType::Argo), "`user``name`");
+    assert!(is_schema_aware(DatabaseType::Argo));
 }
 
 /// Spanner databases are created in one of two immutable dialects. The connected
@@ -136,7 +141,7 @@ fn qualifies_schema_only_for_schema_aware_databases() {
 #[test]
 fn maps_table_pagination_strategy_by_database_type() {
     assert_eq!(table_pagination_strategy(Some(DatabaseType::Mysql)), TablePaginationStrategy::LimitOffset);
-    assert_eq!(table_pagination_strategy(Some(DatabaseType::Dameng)), TablePaginationStrategy::FetchFirst);
+    assert_eq!(table_pagination_strategy(Some(DatabaseType::Dameng)), TablePaginationStrategy::Rownum);
     assert_eq!(table_pagination_strategy(Some(DatabaseType::Db2)), TablePaginationStrategy::Db2FetchFirst);
     assert_eq!(table_pagination_strategy(Some(DatabaseType::SqlServer)), TablePaginationStrategy::SqlServerTop);
     assert_eq!(table_pagination_strategy(Some(DatabaseType::Iris)), TablePaginationStrategy::IrisTop);
@@ -148,7 +153,7 @@ fn maps_table_pagination_strategy_by_database_type() {
     assert_eq!(table_pagination_strategy(Some(DatabaseType::Oscar)), TablePaginationStrategy::Rownum);
     assert_eq!(
         pagination_strategy(Some(DatabaseType::Oracle), PaginationContext::BoundedRead),
-        TablePaginationStrategy::FetchFirst
+        TablePaginationStrategy::Rownum
     );
     assert_eq!(
         pagination_strategy(Some(DatabaseType::Oscar), PaginationContext::BoundedRead),
@@ -239,6 +244,17 @@ fn builds_select_sql_with_limit_syntax_for_database_type() {
         }),
         "SELECT \"id\", \"name\" FROM (SELECT \"id\", \"name\" FROM \"DBXTEST\".\"USERS\" ORDER BY \"id\" ASC) WHERE ROWNUM <= 100"
     );
+    assert_eq!(
+        build_table_select_sql(TableSelectSqlOptions {
+            database_type: Some(DatabaseType::Dameng),
+            schema: Some("SYSDBA"),
+            table_name: "USERS",
+            columns: &columns,
+            order_columns: &keys,
+            limit: 100,
+        }),
+        "SELECT \"id\", \"name\" FROM (SELECT \"id\", \"name\" FROM \"SYSDBA\".\"USERS\" ORDER BY \"id\" ASC) WHERE ROWNUM <= 100"
+    );
     // JDBC connections skip SQL-level row limiting — the JDBC agent handles
     // it via Statement.setMaxRows() which is universally supported.
     assert_eq!(
@@ -316,7 +332,7 @@ fn builds_select_sql_with_limit_syntax_for_database_type() {
             order_columns: &[],
             limit: 100,
         }),
-        "SELECT TOP 100 * FROM \"Ens\".\"AlarmResponse\""
+        "SELECT TOP 100 * FROM Ens.AlarmResponse"
     );
     assert_eq!(
         build_table_select_sql(TableSelectSqlOptions {
@@ -492,7 +508,7 @@ fn builds_table_data_where_and_schema_queries() {
             include_row_id: false,
             ..Default::default()
         }),
-        "SELECT `id` AS `id`, `name` AS `name` FROM `dbx_demo`.`connection_test` ORDER BY 1 LIMIT 2 OFFSET 1;"
+        "SELECT `id`, `name` FROM `dbx_demo`.`connection_test` ORDER BY 1 LIMIT 2 OFFSET 1;"
     );
     assert_eq!(
         build_table_data_select_sql(TableDataSelectSqlOptions {
@@ -773,7 +789,7 @@ fn builds_table_data_where_and_schema_queries() {
             include_row_id: false,
             ..Default::default()
         }),
-        "SELECT TOP 100 * FROM \"Ens\".\"AlarmResponse\""
+        "SELECT TOP 100 * FROM Ens.AlarmResponse"
     );
     assert_eq!(
         build_table_data_select_sql(TableDataSelectSqlOptions {
@@ -792,7 +808,7 @@ fn builds_table_data_where_and_schema_queries() {
             include_row_id: false,
             ..Default::default()
         }),
-        "SELECT * FROM \"Ens\".\"AlarmResponse\" WHERE (Status = 'Open') ORDER BY \"ID\" ASC"
+        "SELECT * FROM Ens.AlarmResponse WHERE (Status = 'Open') ORDER BY \"ID\" ASC"
     );
     assert_eq!(
         build_table_data_select_sql(TableDataSelectSqlOptions {
@@ -1073,7 +1089,7 @@ fn explicit_table_data_order_is_preserved() {
 }
 
 #[test]
-fn builds_iris_table_data_sql_with_literal_top_and_quoted_object() {
+fn builds_iris_table_data_sql_with_literal_top_and_ordinary_object() {
     let sql = build_table_data_select_sql(TableDataSelectSqlOptions {
         database_type: Some(DatabaseType::Iris),
         schema: Some("Ens".to_string()),
@@ -1090,13 +1106,23 @@ fn builds_iris_table_data_sql_with_literal_top_and_quoted_object() {
         ..Default::default()
     });
 
-    assert_eq!(
-        sql,
-        "SELECT TOP 25 * FROM \"Ens\".\"AlarmResponse\" WHERE (\"Status\" = 'Open') ORDER BY \"Status\" DESC"
-    );
+    assert_eq!(sql, "SELECT TOP 25 * FROM Ens.AlarmResponse WHERE (\"Status\" = 'Open') ORDER BY \"Status\" DESC");
     assert!(!sql.contains("?"));
     assert!(!sql.contains(":%qpar"));
     assert!(!sql.contains(" LIMIT "));
+}
+
+#[test]
+fn iris_table_data_sql_quotes_only_delimited_object_names() {
+    let sql = build_table_data_select_sql(TableDataSelectSqlOptions {
+        database_type: Some(DatabaseType::Iris),
+        schema: Some("App Schema".to_string()),
+        table_name: "Patient Record".to_string(),
+        limit: Some(25),
+        ..Default::default()
+    });
+
+    assert_eq!(sql, "SELECT TOP 25 * FROM \"App Schema\".\"Patient Record\"");
 }
 
 #[test]
@@ -1331,6 +1357,31 @@ fn builds_oracle_and_neo4j_table_data_queries() {
             }),
             "MATCH (n:`Employee`) RETURN elementId(n) AS `__DBX_ELEMENT_ID`, n.`id` AS `id`, n.`first name` AS `first name`, n.`role` AS `role` LIMIT 100;"
         );
+}
+
+#[test]
+fn builds_oracle_rowid_wrapped_large_value_reload_sql() {
+    // The data-grid large-value reload selects the synthetic rowid key plus the
+    // target column with a rowid equality filter; `__DBX_ROWID` exists only as
+    // the inline-view alias, never as a base-table column (ORA-00904).
+    assert_eq!(
+        build_table_data_select_sql(TableDataSelectSqlOptions {
+            database_type: Some(DatabaseType::Oracle),
+            schema: Some("APP".to_string()),
+            table_name: "T_TEST".to_string(),
+            table_type: Some("TABLE".to_string()),
+            primary_keys: vec![DBX_ROWID_COLUMN.to_string()],
+            columns: vec![DBX_ROWID_COLUMN.to_string(), "ELM_CONTENT".to_string()],
+            where_input: Some("ROWIDTOCHAR(ROWID) = 'AAAFd1AAFAAAABSAA/'".to_string()),
+            fallback_order_columns: Vec::new(),
+            order_by: None,
+            limit: Some(1),
+            offset: Some(0),
+            include_row_id: true,
+            ..Default::default()
+        }),
+        "SELECT \"__DBX_ROWID\", \"ELM_CONTENT\" FROM (SELECT ROWIDTOCHAR(t.ROWID) AS \"__DBX_ROWID\", t.* FROM \"APP\".\"T_TEST\" t WHERE (ROWIDTOCHAR(ROWID) = 'AAAFd1AAFAAAABSAA/')) WHERE ROWNUM <= 1"
+    );
 }
 
 #[test]

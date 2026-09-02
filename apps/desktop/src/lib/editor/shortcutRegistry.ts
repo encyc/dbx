@@ -68,6 +68,7 @@ export type ShortcutActionId =
   | "toggleTranspose"
   | "cancelSearch"
   | "toggleSidebar"
+  | "toggleZenMode"
   | "copySidebarSelection"
   | "pasteSidebarSelection"
   | "editSidebarConnection"
@@ -516,6 +517,12 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
     labelKey: "settings.shortcutToggleSidebar",
     scope: "global",
     defaultShortcut: "Mod+B",
+  },
+  {
+    id: "toggleZenMode",
+    labelKey: "settings.shortcutToggleZenMode",
+    scope: "global",
+    defaultShortcut: "Shift+Mod+F12",
   },
   {
     id: "copySidebarSelection",
