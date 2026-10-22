@@ -502,8 +502,25 @@ let lastOpenedRightSidebarPanel = RIGHT_SIDEBAR_PANEL_IDS.find((panelId) => righ
 const sidebarOpen = ref(safeLocalStorageGet("dbx-sidebar-open") !== "false");
 const aiPanelReady = ref(false);
 void loadUiTuning();
-const { sidebarWidth, aiPanelWidth, historyWidth, sqlLibraryWidth, sqlFilePanelWidth, functionDictionaryWidth, tabBarWidth, tabBarCollapsed, startSidebarResize, startAiPanelResize, startHistoryResize, startSqlLibraryResize, startSqlFilePanelResize, startFunctionDictionaryResize, startLeftTabBarResize, startRightTabBarResize, setTabBarCollapsed } =
-  usePanelResize();
+const {
+  sidebarWidth,
+  aiPanelWidth,
+  historyWidth,
+  sqlLibraryWidth,
+  sqlFilePanelWidth,
+  functionDictionaryWidth,
+  tabBarWidth,
+  tabBarCollapsed,
+  startSidebarResize,
+  startAiPanelResize,
+  startHistoryResize,
+  startSqlLibraryResize,
+  startSqlFilePanelResize,
+  startFunctionDictionaryResize,
+  startLeftTabBarResize,
+  startRightTabBarResize,
+  setTabBarCollapsed,
+} = usePanelResize();
 const aiAssistantRef = ref<AiAssistantHandle | null>(null);
 provide(OPEN_PLUGIN_AI_CONVERSATION, (request) => {
   openAiPanel();
